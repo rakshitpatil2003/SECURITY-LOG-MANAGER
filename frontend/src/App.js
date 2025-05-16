@@ -19,6 +19,13 @@ import ManualRemediation from './components/Logs/manualRemediation';
 import Tickets from './components/Tickets/Tickets';
 import Reports from './components/Reports/Reports';
 import MitreAttack from './components/ComplianceReports/MitreAttack';
+import Hipaa from './components/ComplianceReports/Hipaa';
+import Gdpr from './components/ComplianceReports/Gdpr';
+import Nist from './components/ComplianceReports/Nist';
+import Pcidss from './components/ComplianceReports/Pcidss';
+import Tsc from './components/ComplianceReports/Tsc';
+import Vulnerability from './components/ThreatIntelligence/Vulnerability';
+
 
 // Theme configuration
 const theme = createTheme({
@@ -82,6 +89,12 @@ function App() {
               <Route path="tickets" element={<Tickets />} />
               <Route path="reports" element={<Reports />} />
               <Route path="compliance/mitre" element={<MitreAttack />} />
+              <Route path="compliance/hipaa" element={<Hipaa />} />
+              <Route path="compliance/gdpr" element={<Gdpr />} />
+              <Route path="compliance/nist" element={<Nist />} />
+              <Route path="compliance/pcidss" element={<Pcidss />} />
+              <Route path="compliance/tsc" element={<Tsc />} />
+              <Route path="threatintelligence/vulnerability" element={<Vulnerability />} />
               <Route path="users" element={<Navigate to="/profile" replace />} />
               <Route path="profile" element={<UserDetails />} />
               <Route path="settings" element={<Settings />} />

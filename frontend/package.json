@@ -16,6 +16,8 @@
         "chart.js": "^4.3.0",
         "d3": "^7.9.0",
         "date-fns": "^4.1.0",
+        "echarts": "^5.6.0",
+        "echarts-for-react": "^3.0.2",
         "html2canvas": "^1.4.1",
         "jspdf": "^3.0.1",
         "keycloak-js": "^21.1.1",

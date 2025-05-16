@@ -28,11 +28,16 @@ import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import ConfirmationNumberIcon from '@mui/icons-material/ConfirmationNumber';
 import WarningIcon from '@mui/icons-material/Warning';
 import FolderSpecialIcon from '@mui/icons-material/FolderSpecial';
-import GppGoodIcon from '@mui/icons-material/GppGood';
+import HealthAndSafetyIcon from '@mui/icons-material/HealthAndSafety';
 import ShieldIcon from '@mui/icons-material/Shield';
 import ExpandLess from '@mui/icons-material/ExpandLess';
 import ExpandMore from '@mui/icons-material/ExpandMore';
 import Collapse from '@mui/material/Collapse';
+import CrisisAlertIcon from '@mui/icons-material/CrisisAlert';
+import AssignmentTurnedInIcon from '@mui/icons-material/AssignmentTurnedIn';
+import AssuredWorkloadIcon from '@mui/icons-material/AssuredWorkload';
+import AddModeratorIcon from '@mui/icons-material/AddModerator';
+import BugReportIcon from '@mui/icons-material/BugReport';
 // Sidebar width
 const drawerWidth = 240;
 
@@ -96,13 +101,57 @@ const Sidebar = ({ open, toggleDrawer }) => {
       subItems: [
         {
           title: 'MITRE ATT&CK',
-          icon: <ShieldIcon />,
+          icon: <CrisisAlertIcon />,
           path: '/compliance/mitre',
+          roles: ['administrator', 'L2-Analyst', 'L3-Analyst']
+        },
+        {
+          title: 'HIPAA',
+          icon: <HealthAndSafetyIcon />,
+          path: '/compliance/hipaa',
+          roles: ['administrator', 'L2-Analyst', 'L3-Analyst']
+        },
+        {
+          title: 'GDPR',
+          icon: <ShieldIcon />,
+          path: '/compliance/gdpr',
+          roles: ['administrator', 'L2-Analyst', 'L3-Analyst']
+        },
+        {
+          title: 'NIST',
+          icon: <AssignmentTurnedInIcon />,
+          path: '/compliance/nist',
+          roles: ['administrator', 'L2-Analyst', 'L3-Analyst']
+        },
+        {
+          title: 'PCI-DSS',
+          icon: <AssuredWorkloadIcon />,
+          path: '/compliance/pcidss',
+          roles: ['administrator', 'L2-Analyst', 'L3-Analyst']
+        },
+        {
+          title: 'TSC',
+          icon: <AddModeratorIcon />,
+          path: '/compliance/tsc',
           roles: ['administrator', 'L2-Analyst', 'L3-Analyst']
         }
         // More compliance report items can be added here later
       ],
       roles: ['administrator', 'L2-Analyst', 'L3-Analyst']
+    },
+    {
+      title: 'Threat Intelligence',
+      icon: <SecurityIcon />,
+      subItems: [
+        {
+          title: 'Vulnerability Detection',
+          icon: <BugReportIcon />,
+          path: '/threatintelligence/vulnerability',
+          roles: ['administrator', 'L1-Analyst', 'L2-Analyst', 'L3-Analyst']
+        }
+        // Other threat intelligence items can be added here
+      ],
+      roles: ['administrator', 'L1-Analyst', 'L2-Analyst', 'L3-Analyst']
     },
     {
       title: 'Users',
@@ -180,12 +229,12 @@ const Sidebar = ({ open, toggleDrawer }) => {
         {menuItems.map((item) => {
           // Only show menu items if user has access
           if (!hasAccess(item.roles)) return null;
-          
+
           // Check if the item has subitems
           if (item.subItems) {
             const isSubMenuOpen = subMenuOpenStates[item.title] || false;
             const hasActiveSubItem = isAnySubItemActive(item.subItems);
-            
+
             return (
               <Box key={item.title}>
                 <ListItem disablePadding sx={{ display: 'block' }}>
@@ -214,14 +263,14 @@ const Sidebar = ({ open, toggleDrawer }) => {
                     {open && (isSubMenuOpen ? <ExpandLess /> : <ExpandMore />)}
                   </ListItemButton>
                 </ListItem>
-                
+
                 {open && (
                   <Collapse in={isSubMenuOpen} timeout="auto" unmountOnExit>
                     <List component="div" disablePadding>
                       {item.subItems.map((subItem) => {
                         // Only show subitems if user has access
                         if (!hasAccess(subItem.roles)) return null;
-                        
+
                         return (
                           <ListItem key={subItem.title} disablePadding sx={{ display: 'block' }}>
                             <ListItemButton
@@ -258,7 +307,7 @@ const Sidebar = ({ open, toggleDrawer }) => {
               </Box>
             );
           }
-          
+
           // Regular menu item without subitems
           return (
             <ListItem key={item.title} disablePadding sx={{ display: 'block' }}>

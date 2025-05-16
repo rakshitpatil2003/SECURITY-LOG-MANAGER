@@ -181,7 +181,7 @@ const MitreAttack = () => {
   const theme = useTheme();
   const { setPageTitle } = useOutletContext();
   const [tabValue, setTabValue] = useState(0);
-  const [timeRange, setTimeRange] = useState('24h');
+  const [timeRange, setTimeRange] = useState('3d');
   const [logs, setLogs] = useState([]);
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -929,24 +929,33 @@ const MitreAttack = () => {
 
  return (
    <Box>
-     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-       <Box sx={{ display: 'flex', flexDirection: 'column' }}>
-         <Typography variant="h4" sx={{ display: 'flex', alignItems: 'center' }}>
-           <ShieldIcon sx={{ mr: 1.5, color: 'error.main' }} />
-           MITRE ATT&CK Framework Analysis
-         </Typography>
-         <Button
-           component={Link}
-           href="https://attack.mitre.org/#"
-           target="_blank"
-           rel="noopener"
-           sx={{ alignSelf: 'flex-start', mt: 1 }}
-           endIcon={<LaunchIcon />}
-           color="primary"
-         >
-           Explore MITRE ATT&CK Framework
-         </Button>
-       </Box>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+        <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+          <Typography variant="h4" sx={{ 
+            display: 'flex', 
+            alignItems: 'center',
+            fontWeight: 600,
+            background: theme.palette.mode === 'dark'
+              ? 'linear-gradient(45deg, #ff6b6b, #4ecdc4)'
+              : 'linear-gradient(45deg, #d32f2f, #2196f3)',
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent'
+          }}>
+            <ShieldIcon sx={{ mr: 1.5, color: 'error.main' }} />
+            MITRE ATT&CK Framework Analysis
+          </Typography>
+          <Button
+            component={Link}
+            href="https://attack.mitre.org/#"
+            target="_blank"
+            rel="noopener"
+            sx={{ alignSelf: 'flex-start', mt: 1 }}
+            endIcon={<LaunchIcon />}
+            color="primary"
+          >
+            Explore MITRE ATT&CK Framework
+          </Button>
+        </Box>
        
        <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
          <TimeRangeSelector
@@ -1031,59 +1040,115 @@ const MitreAttack = () => {
            {tabValue === 0 && (
              <>
                {/* Summary Cards */}
-               <Grid container spacing={3} sx={{ mb: 3 }}>
-                 <Grid item xs={12} sm={6} md={3}>
-                   <Card elevation={2} sx={{ borderRadius: 2 }}>
-                     <CardContent>
-                       <Typography color="text.secondary" gutterBottom>
-                         Total MITRE Events
-                       </Typography>
-                       <Typography variant="h4" component="div" sx={{ fontWeight: 'bold', color: theme.palette.primary.main }}>
-                         {stats?.total?.toLocaleString() || 0}
-                       </Typography>
-                     </CardContent>
-                   </Card>
-                 </Grid>
-                 
-                 <Grid item xs={12} sm={6} md={3}>
-                   <Card elevation={2} sx={{ borderRadius: 2 }}>
-                     <CardContent>
-                       <Typography color="text.secondary" gutterBottom>
-                         Unique MITRE IDs
-                       </Typography>
-                       <Typography variant="h4" component="div" sx={{ fontWeight: 'bold', color: theme.palette.error.main }}>
-                         {stats?.byMitreId?.length || 0}
-                       </Typography>
-                     </CardContent>
-                   </Card>
-                 </Grid>
-                 
-                 <Grid item xs={12} sm={6} md={3}>
-                   <Card elevation={2} sx={{ borderRadius: 2 }}>
-                     <CardContent>
-                       <Typography color="text.secondary" gutterBottom>
-                         Unique Tactics
-                       </Typography>
-                       <Typography variant="h4" component="div" sx={{ fontWeight: 'bold', color: theme.palette.info.main }}>
-                         {stats?.byTactic?.length || 0}
-                       </Typography>
-                     </CardContent>
-                   </Card>
-                 </Grid>
-                 
-                 <Grid item xs={12} sm={6} md={3}>
-                   <Card elevation={2} sx={{ borderRadius: 2 }}>
-                     <CardContent>
-                       <Typography color="text.secondary" gutterBottom>
-                         Unique Techniques
-                       </Typography>
-                       <Typography variant="h4" component="div" sx={{ fontWeight: 'bold', color: theme.palette.success.main }}>
-                         {stats?.byTechnique?.length || 0}
-                       </Typography>
-                     </CardContent>
-                   </Card>
-                 </Grid>
-               </Grid>
+                <Grid container spacing={3} sx={{ mb: 3 }}>
+                  <Grid item xs={12} sm={6} md={3}>
+                    <Card elevation={3} sx={{ 
+                      borderRadius: 2,
+                      background: 'linear-gradient(135deg, rgba(33, 150, 243, 0.8), rgba(33, 150, 243, 0.6))',
+                      position: 'relative',
+                      overflow: 'hidden'
+                    }}>
+                      <CardContent sx={{ position: 'relative', zIndex: 1 }}>
+                        <Typography color="white" gutterBottom>
+                          Total MITRE Events
+                        </Typography>
+                        <Typography variant="h4" component="div" sx={{ fontWeight: 'bold', color: 'white' }}>
+                          {stats?.total?.toLocaleString() || 0}
+                        </Typography>
+                        <Box sx={{
+                          position: 'absolute',
+                          top: -20,
+                          right: -20,
+                          opacity: 0.2,
+                          transform: 'rotate(-15deg)'
+                        }}>
+                          <ShieldIcon sx={{ fontSize: 100 }} />
+                        </Box>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                  
+                  <Grid item xs={12} sm={6} md={3}>
+                    <Card elevation={3} sx={{ 
+                      borderRadius: 2,
+                      background: 'linear-gradient(135deg, rgba(244, 67, 54, 0.8), rgba(244, 67, 54, 0.6))',
+                      position: 'relative',
+                      overflow: 'hidden'
+                    }}>
+                      <CardContent sx={{ position: 'relative', zIndex: 1 }}>
+                        <Typography color="white" gutterBottom>
+                          Unique MITRE IDs
+                        </Typography>
+                        <Typography variant="h4" component="div" sx={{ fontWeight: 'bold', color: 'white' }}>
+                          {stats?.byMitreId?.length || 0}
+                        </Typography>
+                        <Box sx={{
+                          position: 'absolute',
+                          top: -20,
+                          right: -20,
+                          opacity: 0.2,
+                          transform: 'rotate(-15deg)'
+                        }}>
+                          <SecurityIcon sx={{ fontSize: 100 }} />
+                        </Box>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                  
+                  <Grid item xs={12} sm={6} md={3}>
+                    <Card elevation={3} sx={{ 
+                      borderRadius: 2, 
+                      background: 'linear-gradient(135deg, rgba(76, 175, 80, 0.8), rgba(76, 175, 80, 0.6))',
+                      position: 'relative',
+                      overflow: 'hidden'
+                    }}>
+                      <CardContent sx={{ position: 'relative', zIndex: 1 }}>
+                        <Typography color="white" gutterBottom>
+                          Unique Tactics
+                        </Typography>
+                        <Typography variant="h4" component="div" sx={{ fontWeight: 'bold', color: 'white' }}>
+                          {stats?.byTactic?.length || 0}
+                        </Typography>
+                        <Box sx={{
+                          position: 'absolute',
+                          top: -20,
+                          right: -20,
+                          opacity: 0.2,
+                          transform: 'rotate(-15deg)'
+                        }}>
+                          <PieChartIcon sx={{ fontSize: 100 }} />
+                        </Box>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                  
+                  <Grid item xs={12} sm={6} md={3}>
+                    <Card elevation={3} sx={{ 
+                      borderRadius: 2,
+                      background: 'linear-gradient(135deg, rgba(255, 152, 0, 0.8), rgba(255, 152, 0, 0.6))',
+                      position: 'relative',
+                      overflow: 'hidden'
+                    }}>
+                      <CardContent sx={{ position: 'relative', zIndex: 1 }}>
+                        <Typography color="white" gutterBottom>
+                          Unique Techniques
+                        </Typography>
+                        <Typography variant="h4" component="div" sx={{ fontWeight: 'bold', color: 'white' }}>
+                          {stats?.byTechnique?.length || 0}
+                        </Typography>
+                        <Box sx={{
+                          position: 'absolute',
+                          top: -20,
+                          right: -20,
+                          opacity: 0.2,
+                          transform: 'rotate(-15deg)'
+                        }}>
+                          <EqualizerIcon sx={{ fontSize: 100 }} />
+                        </Box>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                </Grid>
 
                {/* Charts */}
                <Grid container spacing={3}>
