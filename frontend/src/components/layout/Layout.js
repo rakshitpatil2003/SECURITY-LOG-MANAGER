@@ -3,6 +3,7 @@ import { Outlet } from 'react-router-dom';
 import { Box, CssBaseline, Toolbar } from '@mui/material';
 import Header from '../Common/Header';
 import Sidebar from '../Common/Sidebar';
+import NewsTicker from '../Common/NewsTicker';
 
 const Layout = () => {
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -13,41 +14,69 @@ const Layout = () => {
   };
 
   return (
-    <Box sx={{ display: 'flex' }}>
+    <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
       <CssBaseline />
       
-      {/* Header */}
-      <Header 
-        open={sidebarOpen} 
-        toggleDrawer={toggleSidebar} 
-        title={pageTitle} 
-      />
+      <Box sx={{ display: 'flex', flex: 1 }}>
+        {/* Header */}
+        <Header 
+          open={sidebarOpen} 
+          toggleDrawer={toggleSidebar} 
+          title={pageTitle} 
+        />
+        
+        {/* Sidebar */}
+        <Sidebar 
+          open={sidebarOpen} 
+          toggleDrawer={toggleSidebar} 
+        />
+        
+        {/* Main content */}
+        <Box
+          component="main"
+          sx={{
+            flexGrow: 1,
+            p: 3,
+            ml: { sm: `${sidebarOpen ? 80 : 20}px` },
+            transition: theme => theme.transitions.create(['margin'], {
+              easing: theme.transitions.easing.sharp,
+              duration: theme.transitions.duration.enteringScreen,
+            }),
+            display: 'flex',
+            flexDirection: 'column',
+          }}
+        >
+          <Toolbar />
+          <Box sx={{ flex: 1 }}>
+            <Outlet context={{ setPageTitle }} />
+          </Box>
+        </Box>
+      </Box>
       
-      {/* Sidebar */}
-      <Sidebar 
-        open={sidebarOpen} 
-        toggleDrawer={toggleSidebar} 
-      />
-      
-      {/* Main content */}
-      <Box
-        component="main"
-        sx={{
-          flexGrow: 1,
-          p: 3,
-          //width: { sm: `calc(100% - ${sidebarOpen ? 240 : 72}px)` },
-          ml: { sm: `${sidebarOpen ? 80 : 20}px` },
-          transition: theme => theme.transitions.create(['margin'], {
+      {/* News Ticker positioned at the bottom */}
+      <Box 
+        sx={{ 
+          position: 'fixed',
+          bottom: 0,
+          width: '100%',
+          zIndex: 1100, // Higher than content but lower than AppBar
+          paddingLeft: theme => ({ 
+            xs: 0, 
+            sm: `${sidebarOpen ? drawerWidth : 72}px` 
+          }),
+          transition: theme => theme.transitions.create(['padding'], {
             easing: theme.transitions.easing.sharp,
             duration: theme.transitions.duration.enteringScreen,
           }),
         }}
       >
-        <Toolbar /> {/* Spacer to push content below app bar */}
-        <Outlet context={{ setPageTitle }} />
+        <NewsTicker />
       </Box>
     </Box>
   );
 };
+
+// Sidebar width constant - keep in sync with Sidebar component
+const drawerWidth = 240;
 
 export default Layout;

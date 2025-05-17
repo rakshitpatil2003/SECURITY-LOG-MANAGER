@@ -6,6 +6,7 @@ const cors = require('cors');
 const morgan = require('morgan');
 const helmet = require('helmet');
 const session = require('express-session');
+const newsRoutes = require('./routes/news');
 
 // Import services
 const { startLogIngestion } = require('./services/logIngestor');
@@ -57,6 +58,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/logs', logRoutes);
 app.use('/api/tickets', ticketRoutes);
+app.use('/api/news', newsRoutes);
 
 // Health check endpoint
 app.get('/health', (req, res) => {
