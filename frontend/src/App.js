@@ -26,7 +26,9 @@ import Pcidss from './components/ComplianceReports/Pcidss';
 import Tsc from './components/ComplianceReports/Tsc';
 import Vulnerability from './components/ThreatIntelligence/Vulnerability';
 import AboutUs from './components/StaticPages/AboutUs';
-
+import PrivacyPolicy from './components/StaticPages/PrivacyPolicy';
+import TermsOfService from './components/StaticPages/TermsOfService';
+import ContactUs from './components/StaticPages/ContactUs';
 
 // Theme configuration
 const theme = createTheme({
@@ -73,7 +75,6 @@ function App() {
           <Routes>
             {/* Public routes */}
             <Route path="/login" element={<Login />} />
-            <Route path="/about" element={<AboutUs />} />
 
             {/* Protected routes */}
             <Route
@@ -100,6 +101,10 @@ function App() {
               <Route path="users" element={<Navigate to="/profile" replace />} />
               <Route path="profile" element={<UserDetails />} />
               <Route path="settings" element={<Settings />} />
+              <Route path="about" element={<AboutUs />} />
+              <Route path="/privacy" element={<PrivacyPolicy />} />
+              <Route path="/terms" element={<TermsOfService />} />
+              <Route path="/contact" element={<ContactUs />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Route>
           </Routes>
