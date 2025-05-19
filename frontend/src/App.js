@@ -102,9 +102,9 @@ function App() {
               <Route path="profile" element={<UserDetails />} />
               <Route path="settings" element={<Settings />} />
               <Route path="about" element={<AboutUs />} />
-              <Route path="/privacy" element={<PrivacyPolicy />} />
-              <Route path="/terms" element={<TermsOfService />} />
-              <Route path="/contact" element={<ContactUs />} />
+              <Route path="privacy" element={<PrivacyPolicy />} />
+              <Route path="terms" element={<TermsOfService />} />
+              <Route path="contact" element={<ContactUs />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Route>
           </Routes>

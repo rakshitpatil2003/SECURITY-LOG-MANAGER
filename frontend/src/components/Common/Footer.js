@@ -70,7 +70,7 @@ const Footer = () => {
       <FooterContent>
         <CopyrightText>
           <Typography variant="body2">
-            © {currentYear} Security Log Manager. All rights reserved.
+            © {new Date().getFullYear()} Security Log Manager. All rights reserved.
           </Typography>
         </CopyrightText>
         <FooterLinks>
