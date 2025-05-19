@@ -25,6 +25,7 @@ import Nist from './components/ComplianceReports/Nist';
 import Pcidss from './components/ComplianceReports/Pcidss';
 import Tsc from './components/ComplianceReports/Tsc';
 import Vulnerability from './components/ThreatIntelligence/Vulnerability';
+import AboutUs from './components/StaticPages/AboutUs';
 
 
 // Theme configuration
@@ -72,6 +73,7 @@ function App() {
           <Routes>
             {/* Public routes */}
             <Route path="/login" element={<Login />} />
+            <Route path="/about" element={<AboutUs />} />
 
             {/* Protected routes */}
             <Route

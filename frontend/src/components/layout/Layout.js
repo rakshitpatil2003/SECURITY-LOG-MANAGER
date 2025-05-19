@@ -4,6 +4,7 @@ import { Box, CssBaseline, Toolbar } from '@mui/material';
 import Header from '../Common/Header';
 import Sidebar from '../Common/Sidebar';
 import NewsTicker from '../Common/NewsTicker';
+import Footer from '../Common/Footer'; // Add this import
 
 const Layout = () => {
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -44,6 +45,7 @@ const Layout = () => {
             }),
             display: 'flex',
             flexDirection: 'column',
+            pb: 12, // Add padding bottom to prevent content from being hidden behind footer
           }}
         >
           <Toolbar />
@@ -53,13 +55,13 @@ const Layout = () => {
         </Box>
       </Box>
       
-      {/* News Ticker positioned at the bottom */}
+      {/* News Ticker positioned above footer */}
       <Box 
         sx={{ 
           position: 'fixed',
-          bottom: 0,
+          bottom: 48, // Height of footer
           width: '100%',
-          zIndex: 1100, // Higher than content but lower than AppBar
+          zIndex: 1100,
           paddingLeft: theme => ({ 
             xs: 0, 
             sm: `${sidebarOpen ? drawerWidth : 72}px` 
@@ -71,6 +73,22 @@ const Layout = () => {
         }}
       >
         <NewsTicker />
+      </Box>
+      
+      {/* Footer positioned at the very bottom */}
+      <Box
+        sx={{
+          paddingLeft: theme => ({ 
+            xs: 0, 
+            sm: `${sidebarOpen ? drawerWidth : 72}px` 
+          }),
+          transition: theme => theme.transitions.create(['padding'], {
+            easing: theme.transitions.easing.sharp,
+            duration: theme.transitions.duration.enteringScreen,
+          }),
+        }}
+      >
+        <Footer />
       </Box>
     </Box>
   );
