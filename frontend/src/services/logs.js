@@ -33,6 +33,108 @@ export const getLogs = async (params = {}) => {
   }
 };
 
+// Get File Integrity Monitoring logs
+export const getFimLogs = async (params = {}) => {
+  try {
+    console.log('Fetching FIM logs with params:', params);
+    
+    const response = await api.get('/logs/fim', { params });
+    
+    if (!response.data || !response.data.logs) {
+      throw new Error('Invalid response format from server');
+    }
+    
+    console.log(`Received ${response.data.logs.length} FIM logs out of ${response.data.pagination?.total}`);
+    
+    // Log first few results to verify pagination works
+    if (params.page && params.page > 1 && response.data.logs?.length > 0) {
+      console.log('Page number requested:', params.page);
+      console.log('First few log IDs on this page:', 
+        response.data.logs.slice(0, 3).map(log => log.id || log._id));
+    }
+    
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching FIM logs:', error);
+    
+    // Detailed error handling
+    if (error.response) {
+      console.error('Error details:', error.response.data);
+      throw new Error(error.response.data.message || 'Failed to fetch FIM logs');
+    }
+    
+    throw new Error('Network error. Please try again.');
+  }
+};
+
+// Get Sentinel AI logs
+export const getSentinelAILogs = async (params = {}) => {
+  try {
+    console.log('Fetching Sentinel AI logs with params:', params);
+    
+    const response = await api.get('/logs/sentinel-ai', { params });
+    
+    if (!response.data || !response.data.logs) {
+      throw new Error('Invalid response format from server');
+    }
+    
+    console.log(`Received ${response.data.logs.length} Sentinel AI logs out of ${response.pagination?.total}`);
+    
+    // Log first few results to verify pagination works
+    if (params.page && params.page > 1 && response.data.logs?.length > 0) {
+      console.log('Page number requested:', params.page);
+      console.log('First few log IDs on this page:', 
+        response.data.logs.slice(0, 3).map(log => log.id || log._id));
+    }
+    
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching Sentinel AI logs:', error);
+    
+    // Detailed error handling
+    if (error.response) {
+      console.error('Error details:', error.response.data);
+      throw new Error(error.response.data.message || 'Failed to fetch Sentinel AI logs');
+    }
+    
+    throw new Error('Network error. Please try again.');
+  }
+};
+
+// Get ML Analysis logs
+export const getMLAnalysisLogs = async (params = {}) => {
+  try {
+    console.log('Fetching ML Analysis logs with params:', params);
+    
+    const response = await api.get('/logs/ml-analysis', { params });
+    
+    if (!response.data || !response.data.logs) {
+      throw new Error('Invalid response format from server');
+    }
+    
+    console.log(`Received ${response.data.logs.length} ML Analysis logs out of ${response.pagination?.total}`);
+    
+    // Log first few results to verify pagination works
+    if (params.page && params.page > 1 && response.data.logs?.length > 0) {
+      console.log('Page number requested:', params.page);
+      console.log('First few log IDs on this page:', 
+        response.data.logs.slice(0, 3).map(log => log.id || log._id));
+    }
+    
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching ML Analysis logs:', error);
+    
+    // Detailed error handling
+    if (error.response) {
+      console.error('Error details:', error.response.data);
+      throw new Error(error.response.data.message || 'Failed to fetch ML Analysis logs');
+    }
+    
+    throw new Error('Network error. Please try again.');
+  }
+};
+
 // Get MITRE ATT&CK logs
 export const getMitreLogs = async (params = {}) => {
   try {
@@ -278,6 +380,72 @@ export const getVulnerabilityLogs = async (params = {}) => {
       throw new Error(error.response.data.message || 'Failed to fetch vulnerability logs');
     }
     
+    throw new Error('Network error. Please try again.');
+  }
+};
+
+// Get threat hunting logs
+export const getThreatHuntingLogs = async (params = {}) => {
+  try {
+    console.log('Fetching threat hunting logs with params:', params);
+    
+    const response = await api.get('/logs/threathunting', { params });
+    
+    if (!response.data || !response.data.logs) {
+      throw new Error('Invalid response format from server');
+    }
+    
+    console.log(`Received ${response.data.logs.length} threat hunting logs out of ${response.data.pagination?.total}`);
+    
+    // Log first few results to verify pagination works
+    if (params.page && params.page > 1 && response.data.logs?.length > 0) {
+      console.log('Page number requested:', params.page);
+      console.log('First few log IDs on this page:', 
+        response.data.logs.slice(0, 3).map(log => log.id || log._id));
+    }
+    
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching threat hunting logs:', error);
+    
+    // Detailed error handling
+    if (error.response) {
+      console.error('Error details:', error.response.data);
+      
+      // Handle specific field data errors
+      if (error.response.data && 
+          error.response.data.message && 
+          error.response.data.message.includes('field data')) {
+        throw new Error('The server encountered an issue with field aggregations. Some visualizations may not display correctly.');
+      }
+      
+      throw new Error(error.response.data.message || 'Failed to fetch threat hunting logs');
+    }
+    
+    throw new Error('Network error. Please try again.');
+  }
+};
+
+export const getConnectionData = async (timeRange = '24h') => {
+  try {
+    console.log('Fetching connection data with timeRange:', timeRange);
+    
+    const response = await api.get('/logs/connections', {
+      params: { timeRange }
+    });
+    
+    if (!response.data) {
+      throw new Error('Invalid response format');
+    }
+    
+    console.log(`Received ${response.data.connections?.length || 0} connections`);
+    
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching connection data:', error);
+    if (error.response) {
+      throw new Error(error.response.data.message || 'Failed to fetch connection data');
+    }
     throw new Error('Network error. Please try again.');
   }
 };

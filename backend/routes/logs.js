@@ -304,6 +304,526 @@ router.get('/major', async (req, res, next) => {
   }
 });
 
+// Get logs with FIM information (files added, modified, deleted)
+router.get('/fim', async (req, res, next) => {
+  try {
+    const {
+      page = 1,
+      limit = 50,
+      search = '',
+      sortBy = '@timestamp',
+      sortOrder = 'desc',
+      timeRange = '24h',
+      eventType = ''
+    } = req.query;
+
+    // Calculate pagination values
+    const currentPage = parseInt(page, 10);
+    let pageSize = parseInt(limit, 10);
+    
+    // Cap the maximum page size
+    if (pageSize > 10000) {
+      console.warn(`Requested size ${pageSize} exceeds max limit of 10000, capping at 10000`);
+      pageSize = 10000;
+    }
+    
+    const from = (currentPage - 1) * pageSize;
+
+    // Parse time range
+    const { startDate, endDate } = parseTimeRange(timeRange);
+    
+    // Get OpenSearch client
+    const client = await getOpenSearchClient();
+
+    // Build query for logs that have FIM events (syscheck.event exists)
+    const query = {
+      bool: {
+        must: [
+          // Time range filter
+          {
+            range: {
+              '@timestamp': {
+                gte: startDate.toISOString(),
+                lte: endDate.toISOString()
+              }
+            }
+          },
+          // Ensure syscheck.event exists
+          {
+            exists: {
+              field: 'syscheck.event'
+            }
+          }
+        ]
+      }
+    };
+    
+    // Add event type filter if specified
+    if (eventType) {
+      const eventTypes = eventType.split(',').filter(Boolean);
+      if (eventTypes.length > 0) {
+        query.bool.must.push({
+          terms: {
+            'syscheck.event': eventTypes
+          }
+        });
+      }
+    }
+
+    // Add search if provided
+    if (search && search.trim() !== '') {
+      query.bool.must.push({
+        multi_match: {
+          query: search,
+          fields: [
+            'syscheck.path^3',
+            'agent.name^2',
+            'rule.description^2',
+            'syscheck.event',
+            'syscheck.diff',
+            'syscheck.mode',
+            'rule.id',
+            'id',
+            'raw_log.message'
+          ]
+        }
+      });
+    }
+
+    // Get all existing indices with logs-* pattern
+    const indicesResponse = await client.cat.indices({ 
+      index: 'logs-*', 
+      format: 'json' 
+    });
+    
+    let indices = [];
+    
+    if (indicesResponse.body && indicesResponse.body.length > 0) {
+      indices = indicesResponse.body.map(index => index.index);
+    }
+    
+    // If no indices found, return empty result
+    if (indices.length === 0) {
+      console.log('No indices found');
+      return res.json({
+        logs: [],
+        stats: {
+          total: 0,
+          byEvent: [],
+          byAgent: [],
+          timeDistribution: []
+        },
+        pagination: {
+          page: currentPage,
+          limit: pageSize,
+          total: 0,
+          pages: 0
+        }
+      });
+    }
+
+    // First get total count and stats with a size 0 query for accuracy
+    const statsResponse = await client.search({
+      index: indices.join(','),
+      body: {
+        size: 0,
+        track_total_hits: true, // Ensure accurate counting for large result sets
+        query: query,
+        aggs: {
+          // Event type distribution
+          events: {
+            terms: {
+              field: 'syscheck.event',
+              size: 20
+            }
+          },
+          // Agent distribution
+          agents: {
+            terms: {
+              field: 'agent.name',
+              size: 50
+            }
+          },
+          // Time distribution with event breakdown
+          time_distribution: {
+            date_histogram: {
+              field: '@timestamp',
+              calendar_interval: 'day'
+            },
+            aggs: {
+              events: {
+                filters: {
+                  filters: {
+                    'added': { term: { 'syscheck.event': 'added' } },
+                    'modified': { term: { 'syscheck.event': 'modified' } },
+                    'deleted': { term: { 'syscheck.event': 'deleted' } }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    });
+
+    // Get the total count from the stats query
+    const totalCount = statsResponse.body.hits.total.value;
+    
+    // Log the stats found
+    console.log(`Found ${totalCount} total logs with FIM events`);
+    console.log(`Event types found: ${statsResponse.body.aggregations.events.buckets.length}`);
+    console.log(`Agents found: ${statsResponse.body.aggregations.agents.buckets.length}`);
+
+    // Now get the specific page of logs
+    const logsResponse = await client.search({
+      index: indices.join(','),
+      body: {
+        from,
+        size: pageSize,
+        query,
+        sort: [
+          {
+            [sortBy]: {
+              order: sortOrder
+            }
+          }
+        ]
+      }
+    });
+
+    // Format the logs
+    const logs = logsResponse.body.hits.hits.map(hit => ({
+      ...hit._source,
+      id: hit._id,
+      _score: hit._score
+    }));
+
+    // Extract aggregation results
+    const aggs = statsResponse.body.aggregations;
+
+    // Process time distribution to include events breakdown
+    const timeDistribution = aggs.time_distribution.buckets.map(bucket => {
+      const eventBuckets = bucket.events.buckets;
+      return {
+        date: bucket.key_as_string,
+        count: bucket.doc_count,
+        events: {
+          added: eventBuckets.added.doc_count,
+          modified: eventBuckets.modified.doc_count,
+          deleted: eventBuckets.deleted.doc_count
+        }
+      };
+    });
+
+    // Format the statistics
+    const stats = {
+      total: totalCount, // Use the accurate total from the stats query
+      byEvent: aggs.events.buckets.map(bucket => ({
+        event: bucket.key,
+        count: bucket.doc_count
+      })),
+      byAgent: aggs.agents.buckets.map(bucket => ({
+        name: bucket.key,
+        count: bucket.doc_count
+      })),
+      timeDistribution
+    };
+
+    // Calculate total pages
+    const totalPages = Math.ceil(totalCount / pageSize);
+
+    // Return results with pagination
+    res.json({
+      logs,
+      stats,
+      pagination: {
+        page: currentPage,
+        limit: pageSize,
+        total: totalCount,
+        pages: totalPages
+      }
+    });
+  } catch (error) {
+    console.error('Error in FIM logs route:', error);
+    next(error);
+  }
+});
+
+// Get logs with Sentinel AI response data
+router.get('/sentinel-ai', async (req, res, next) => {
+  try {
+    const {
+      page = 1,
+      limit = 50,
+      search = '',
+      sortBy = '@timestamp',
+      sortOrder = 'desc',
+      timeRange = '24h'
+    } = req.query;
+
+    // Calculate pagination values
+    const currentPage = parseInt(page, 10);
+    let pageSize = parseInt(limit, 10);
+    
+    // Cap the maximum page size
+    if (pageSize > 10000) {
+      console.warn(`Requested size ${pageSize} exceeds max limit of 10000, capping at 10000`);
+      pageSize = 10000;
+    }
+    
+    const from = (currentPage - 1) * pageSize;
+
+    // Parse time range
+    const { startDate, endDate } = parseTimeRange(timeRange);
+    
+    // Get OpenSearch client
+    const client = await getOpenSearchClient();
+
+    // Build query for logs that have AI_response data
+    const query = {
+      bool: {
+        must: [
+          // Time range filter
+          {
+            range: {
+              '@timestamp': {
+                gte: startDate.toISOString(),
+                lte: endDate.toISOString()
+              }
+            }
+          },
+          // Ensure data.AI_response exists
+          {
+            exists: {
+              field: 'data.AI_response'
+            }
+          }
+        ]
+      }
+    };
+
+    // Add search if provided
+    if (search && search.trim() !== '') {
+      query.bool.must.push({
+        multi_match: {
+          query: search,
+          fields: [
+            'data.AI_response^3',
+            'rule.description^2',
+            'agent.name^2',
+            'agent.ip',
+            'rule.id',
+            'rule.level',
+            'id',
+            'raw_log.message'
+          ]
+        }
+      });
+    }
+
+    // Get all existing indices with logs-* pattern
+    const indicesResponse = await client.cat.indices({ 
+      index: 'logs-*', 
+      format: 'json' 
+    });
+    
+    let indices = [];
+    
+    if (indicesResponse.body && indicesResponse.body.length > 0) {
+      indices = indicesResponse.body.map(index => index.index);
+    }
+    
+    // If no indices found, return empty result
+    if (indices.length === 0) {
+      console.log('No indices found');
+      return res.json({
+        logs: [],
+        pagination: {
+          page: currentPage,
+          limit: pageSize,
+          total: 0,
+          pages: 0
+        }
+      });
+    }
+
+    // Execute search query
+    const response = await client.search({
+      index: indices.join(','),
+      body: {
+        from,
+        size: pageSize,
+        query,
+        sort: [
+          {
+            [sortBy]: {
+              order: sortOrder
+            }
+          }
+        ]
+      }
+    });
+
+    // Format the logs
+    const logs = response.body.hits.hits.map(hit => ({
+      ...hit._source,
+      id: hit._id,
+      _score: hit._score
+    }));
+
+    res.json({
+      logs,
+      pagination: {
+        page: currentPage,
+        limit: pageSize,
+        total: response.body.hits.total.value,
+        pages: Math.ceil(response.body.hits.total.value / pageSize)
+      }
+    });
+  } catch (error) {
+    console.error('Error in Sentinel AI logs route:', error);
+    next(error);
+  }
+});
+
+// Get logs with ML Analysis data
+router.get('/ml-analysis', async (req, res, next) => {
+  try {
+    const {
+      page = 1,
+      limit = 50,
+      search = '',
+      sortBy = '@timestamp',
+      sortOrder = 'desc',
+      timeRange = '24h'
+    } = req.query;
+
+    // Calculate pagination values
+    const currentPage = parseInt(page, 10);
+    let pageSize = parseInt(limit, 10);
+    
+    // Cap the maximum page size
+    if (pageSize > 10000) {
+      console.warn(`Requested size ${pageSize} exceeds max limit of 10000, capping at 10000`);
+      pageSize = 10000;
+    }
+    
+    const from = (currentPage - 1) * pageSize;
+
+    // Parse time range
+    const { startDate, endDate } = parseTimeRange(timeRange);
+    
+    // Get OpenSearch client
+    const client = await getOpenSearchClient();
+
+    // Build query for logs that have ML_logs.anomaly_score data
+    const query = {
+      bool: {
+        must: [
+          // Time range filter
+          {
+            range: {
+              '@timestamp': {
+                gte: startDate.toISOString(),
+                lte: endDate.toISOString()
+              }
+            }
+          },
+          // Ensure data.ML_logs.anomaly_score exists
+          {
+            exists: {
+              field: 'data.ML_logs.anomaly_score'
+            }
+          }
+        ]
+      }
+    };
+
+    // Add search if provided
+    if (search && search.trim() !== '') {
+      query.bool.must.push({
+        multi_match: {
+          query: search,
+          fields: [
+            'data.ML_logs.ai_ml_logs^3',
+            'data.ML_logs.severity^2',
+            'rule.description^2',
+            'agent.name^2',
+            'agent.ip',
+            'rule.id',
+            'rule.level',
+            'id',
+            'raw_log.message'
+          ]
+        }
+      });
+    }
+
+    // Get all existing indices with logs-* pattern
+    const indicesResponse = await client.cat.indices({ 
+      index: 'logs-*', 
+      format: 'json' 
+    });
+    
+    let indices = [];
+    
+    if (indicesResponse.body && indicesResponse.body.length > 0) {
+      indices = indicesResponse.body.map(index => index.index);
+    }
+    
+    // If no indices found, return empty result
+    if (indices.length === 0) {
+      console.log('No indices found');
+      return res.json({
+        logs: [],
+        pagination: {
+          page: currentPage,
+          limit: pageSize,
+          total: 0,
+          pages: 0
+        }
+      });
+    }
+
+    // Execute search query
+    const response = await client.search({
+      index: indices.join(','),
+      body: {
+        from,
+        size: pageSize,
+        query,
+        sort: [
+          {
+            [sortBy]: {
+              order: sortOrder
+            }
+          }
+        ]
+      }
+    });
+
+    // Format the logs
+    const logs = response.body.hits.hits.map(hit => ({
+      ...hit._source,
+      id: hit._id,
+      _score: hit._score
+    }));
+
+    res.json({
+      logs,
+      pagination: {
+        page: currentPage,
+        limit: pageSize,
+        total: response.body.hits.total.value,
+        pages: Math.ceil(response.body.hits.total.value / pageSize)
+      }
+    });
+  } catch (error) {
+    console.error('Error in ML Analysis logs route:', error);
+    next(error);
+  }
+});
+
 // Get logs with MITRE ATT&CK information
 router.get('/mitre', async (req, res, next) => {
   try {
@@ -1993,6 +2513,404 @@ router.get('/vulnerability', async (req, res, next) => {
     });
   } catch (error) {
     console.error('Error in vulnerability logs route:', error);
+    next(error);
+  }
+});
+
+// Get logs with threat hunting information
+router.get('/threathunting', async (req, res, next) => {
+  try {
+    const {
+      page = 1,
+      limit = 100,
+      search = '',
+      sortBy = '@timestamp',
+      sortOrder = 'desc',
+      timeRange = '24h',
+      fullStats = false // Parameter for full stats
+    } = req.query;
+
+    // Calculate pagination values
+    const currentPage = parseInt(page, 10);
+    let pageSize = parseInt(limit, 10);
+    
+    // Cap the maximum page size at 100,000
+    if (pageSize > 100000) {
+      console.warn(`Requested size ${pageSize} exceeds max limit of 100000, capping at 100000`);
+      pageSize = 100000;
+    }
+    
+    const from = (currentPage - 1) * pageSize;
+
+    // Parse time range
+    const { startDate, endDate } = parseTimeRange(timeRange);
+    
+    // Get OpenSearch client
+    const client = await getOpenSearchClient();
+
+    // Build query for logs that have data.action
+    const query = {
+      bool: {
+        must: [
+          // Time range filter
+          {
+            range: {
+              '@timestamp': {
+                gte: startDate.toISOString(),
+                lte: endDate.toISOString()
+              }
+            }
+          },
+          // Ensure data.action exists
+          {
+            exists: {
+              field: 'data.action'
+            }
+          }
+        ]
+      }
+    };
+
+    // Add search if provided
+    if (search && search.trim() !== '') {
+      query.bool.must.push({
+        multi_match: {
+          query: search,
+          fields: [
+            'rule.description^3',
+            'data.action^2',
+            'data.msg^2',
+            'data.direction',
+            'data.app',
+            'data.applist',
+            'data.apprisk',
+            'data.srccountry',
+            'data.dstcountry',
+            'agent.name',
+            "id",
+            "raw_log.message"
+          ]
+        }
+      });
+    }
+
+    // Get all existing indices with logs-* pattern
+    const indicesResponse = await client.cat.indices({ 
+      index: 'logs-*', 
+      format: 'json' 
+    });
+    
+    let indices = [];
+    
+    if (indicesResponse.body && indicesResponse.body.length > 0) {
+      indices = indicesResponse.body.map(index => index.index);
+    }
+    
+    // If no indices found, return empty result
+    if (indices.length === 0) {
+      console.log('No indices found');
+      return res.json({
+        logs: [],
+        stats: {
+          total: 0,
+          byAction: [],
+          byDirection: [],
+          byMessage: [],
+          byAppList: [],
+          byAppRisk: [],
+          byLevel: [],
+          bySrcCountry: [],
+          byDstCountry: [],
+          timeDistribution: []
+        },
+        pagination: {
+          page: currentPage,
+          limit: pageSize,
+          total: 0,
+          pages: 0
+        }
+      });
+    }
+
+    // First get total count and stats with a size 0 query for accuracy
+    const statsResponse = await client.search({
+      index: indices.join(','),
+      body: {
+        size: 0,
+        track_total_hits: true, // Ensure accurate counting for large result sets
+        query: query,
+        aggs: {
+          // Action distribution
+          actions: {
+            terms: {
+              field: 'data.action',
+              size: 20
+            }
+          },
+          // Direction distribution
+          directions: {
+            terms: {
+              field: 'data.direction.keyword',
+              size: 20
+            }
+          },
+          // Message distribution
+          messages: {
+            terms: {
+              field: 'data.msg.keyword',
+              size: 50
+            }
+          },
+          // App list distribution
+          applists: {
+            terms: {
+              field: 'data.applist.keyword',
+              size: 30
+            }
+          },
+          // App risk distribution
+          apprisks: {
+            terms: {
+              field: 'data.apprisk.keyword',
+              size: 20
+            }
+          },
+          // Level distribution
+          levels: {
+            terms: {
+              field: 'data.level.keyword',
+              size: 20
+            }
+          },
+          // Source country distribution
+          src_countries: {
+            terms: {
+              field: 'data.srccountry.keyword',
+              size: 50,
+              missing: 'Unknown'
+            }
+          },
+          // Destination country distribution
+          dst_countries: {
+            terms: {
+              field: 'data.dstcountry.keyword',
+              size: 50,
+              missing: 'Unknown'
+            }
+          },
+          // Time distribution
+          time_distribution: {
+            date_histogram: {
+              field: '@timestamp',
+              calendar_interval: 'day'
+            }
+          }
+        }
+      }
+    });
+
+    // Get the total count from the stats query
+    const totalCount = statsResponse.body.hits.total.value;
+    
+    // Log the stats found
+    console.log(`Found ${totalCount} total logs with threat hunting information`);
+
+    // Now get the specific page of logs
+    const logsResponse = await client.search({
+      index: indices.join(','),
+      body: {
+        from,
+        size: pageSize,
+        query,
+        sort: [
+          {
+            [sortBy]: {
+              order: sortOrder
+            }
+          }
+        ]
+      }
+    });
+
+    // Format the logs
+    const logs = logsResponse.body.hits.hits.map(hit => ({
+      ...hit._source,
+      id: hit._id,
+      _score: hit._score
+    }));
+
+    // Extract aggregation results
+    const aggs = statsResponse.body.aggregations;
+
+    // Format the statistics
+    const stats = {
+      total: totalCount, // Use the accurate total from the stats query
+      byAction: (aggs.actions?.buckets || []).map(bucket => ({
+        action: bucket.key,
+        count: bucket.doc_count
+      })),
+      byDirection: (aggs.directions?.buckets || []).map(bucket => ({
+        direction: bucket.key,
+        count: bucket.doc_count
+      })),
+      byMessage: (aggs.messages?.buckets || []).map(bucket => ({
+        message: bucket.key,
+        count: bucket.doc_count
+      })),
+      byAppList: (aggs.applists?.buckets || []).map(bucket => ({
+        applist: bucket.key,
+        count: bucket.doc_count
+      })),
+      byAppRisk: (aggs.apprisks?.buckets || []).map(bucket => ({
+        risk: bucket.key,
+        count: bucket.doc_count
+      })),
+      byLevel: (aggs.levels?.buckets || []).map(bucket => ({
+        level: bucket.key,
+        count: bucket.doc_count
+      })),
+      bySrcCountry: (aggs.src_countries?.buckets || []).map(bucket => ({
+        country: bucket.key === 'Reserved' ? 'Server' : bucket.key,
+        count: bucket.doc_count
+      })),
+      byDstCountry: (aggs.dst_countries?.buckets || []).map(bucket => ({
+        country: bucket.key === 'Reserved' ? 'Server' : bucket.key,
+        count: bucket.doc_count
+      })),
+      timeDistribution: (aggs.time_distribution?.buckets || []).map(bucket => ({
+        date: bucket.key_as_string,
+        count: bucket.doc_count
+      }))
+    };
+
+    // Calculate total pages
+    const totalPages = Math.ceil(totalCount / pageSize);
+
+    // Return results with pagination
+    res.json({
+      logs,
+      stats,
+      pagination: {
+        page: currentPage,
+        limit: pageSize,
+        total: totalCount,
+        pages: totalPages
+      }
+    });
+  } catch (error) {
+    console.error('Error in threat hunting logs route:', error);
+    next(error);
+  }
+});
+
+// Get connection data for the world map
+router.get('/connections', async (req, res, next) => {
+  try {
+    const { timeRange = '24h' } = req.query;
+    
+    // Parse time range
+    const { startDate, endDate } = parseTimeRange(timeRange);
+    
+    // Get OpenSearch client
+    const client = await getOpenSearchClient();
+
+    // Get all existing indices with logs-* pattern
+    const indicesResponse = await client.cat.indices({ 
+      index: 'logs-*', 
+      format: 'json' 
+    });
+    
+    let indices = [];
+    
+    if (indicesResponse.body && indicesResponse.body.length > 0) {
+      indices = indicesResponse.body.map(index => index.index);
+    }
+    
+    // If no indices found, return empty result
+    if (indices.length === 0) {
+      return res.json({
+        connections: []
+      });
+    }
+
+    // Build query for logs with srccountry and dstcountry
+    const query = {
+      bool: {
+        must: [
+          // Time range filter
+          {
+            range: {
+              '@timestamp': {
+                gte: startDate.toISOString(),
+                lte: endDate.toISOString()
+              }
+            }
+          },
+          // Ensure data.srccountry exists
+          {
+            exists: {
+              field: 'data.srccountry'
+            }
+          },
+          // Ensure data.dstcountry exists
+          {
+            exists: {
+              field: 'data.dstcountry'
+            }
+          }
+        ]
+      }
+    };
+
+    // Execute aggregation query
+    const response = await client.search({
+      index: indices.join(','),
+      body: {
+        size: 0,
+        query: query,
+        aggs: {
+          connections: {
+            composite: {
+              sources: [
+                { source: { terms: { field: 'data.srccountry.keyword' } } },
+                { destination: { terms: { field: 'data.dstcountry.keyword' } } }
+              ],
+              size: 100  // Limit to top 100 connections
+            }
+          }
+        }
+      }
+    });
+
+    // Process the results
+    const connections = [];
+    
+    if (response.body.aggregations && response.body.aggregations.connections) {
+      const buckets = response.body.aggregations.connections.buckets || [];
+      
+      buckets.forEach(bucket => {
+        // Skip if "Unknown" is either source or destination
+        if (bucket.key.source === 'Unknown' || bucket.key.destination === 'Unknown') {
+          return;
+        }
+        
+        connections.push({
+          source: bucket.key.source,
+          destination: bucket.key.destination,
+          count: bucket.doc_count
+        });
+      });
+    }
+
+    // Sort by count in descending order and limit to top 50 connections
+    connections.sort((a, b) => b.count - a.count);
+    const topConnections = connections.slice(0, 50);
+
+    res.json({
+      connections: topConnections
+    });
+  } catch (error) {
+    console.error('Error getting connections data:', error);
     next(error);
   }
 });
