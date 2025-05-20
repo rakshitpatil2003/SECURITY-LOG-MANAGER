@@ -1,6 +1,10 @@
 import React from 'react';
+import { useContext } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { CssBaseline, ThemeProvider, createTheme } from '@mui/material';
+import { ThemeProvider as CustomThemeProvider } from './context/ThemeContext';
+import { ThemeContext } from './context/ThemeContext';
+
 
 // Auth Context
 import { AuthProvider } from './context/AuthContext';
@@ -35,42 +39,61 @@ import SentinelAI from './components/Logs/SentinelAI';
 
 
 // Theme configuration
-const theme = createTheme({
-  palette: {
-    primary: {
-      main: '#2196f3',
-    },
-    secondary: {
-      main: '#f50057',
-    },
-    background: {
-      default: '#f5f5f5',
-    },
-  },
-  typography: {
-    fontFamily: '"Roboto", "Helvetica", "Arial", sans-serif',
-    h4: {
-      fontWeight: 500,
-    },
-    h6: {
-      fontWeight: 500,
-    },
-  },
-  components: {
-    MuiAppBar: {
-      defaultProps: {
-        elevation: 1,
-      },
-    },
-    MuiPaper: {
-      defaultProps: {
-        elevation: 2,
-      },
-    },
-  },
-});
-
 function App() {
+  return (
+    <CustomThemeProvider>
+      <AppWithTheme />
+    </CustomThemeProvider>
+  );
+}
+
+
+function AppWithTheme() {
+  const { darkMode } = useContext(ThemeContext);
+  
+  const theme = createTheme({
+    palette: {
+      mode: darkMode ? 'dark' : 'light',
+      primary: {
+        main: '#2196f3',
+      },
+      secondary: {
+        main: '#f50057',
+      },
+      background: {
+        default: darkMode ? '#121212' : '#f5f5f5',
+        paper: darkMode ? '#1e1e1e' : '#ffffff',
+      },
+    },
+    typography: {
+      fontFamily: '"Roboto", "Helvetica", "Arial", sans-serif',
+      h4: {
+        fontWeight: 500,
+      },
+      h6: {
+        fontWeight: 500,
+      },
+    },
+    components: {
+      MuiAppBar: {
+        defaultProps: {
+          elevation: 1,
+        },
+        styleOverrides: {
+          root: {
+            backgroundColor: darkMode ? '#1e1e1e' : '#ffffff',
+            color: darkMode ? '#ffffff' : '#333333'
+          }
+        }
+      },
+      MuiPaper: {
+        defaultProps: {
+          elevation: 2,
+        },
+      },
+    },
+  });
+
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
