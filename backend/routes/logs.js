@@ -304,6 +304,445 @@ router.get('/major', async (req, res, next) => {
   }
 });
 
+router.get('/advanced-analytics', async (req, res, next) => {
+  try {
+    const { timeRange = '7d' } = req.query;
+    
+    // Parse time range
+    const { startDate, endDate } = parseTimeRange(timeRange);
+    
+    // Get OpenSearch client
+    const client = await getOpenSearchClient();
+
+    // Get all existing indices with logs-* pattern
+    const indicesResponse = await client.cat.indices({ 
+      index: 'logs-*', 
+      format: 'json' 
+    });
+    
+    let indices = [];
+    
+    if (indicesResponse.body && indicesResponse.body.length > 0) {
+      indices = indicesResponse.body.map(index => index.index);
+    }
+    
+    // If no indices found, return empty result
+    if (indices.length === 0) {
+      return res.json({
+        summary: {
+          total: 0,
+          warnings: 0,
+          critical: 0,
+          normal: 0
+        },
+        timeline: [],
+        ruleLevels: [],
+        ruleDescriptions: [],
+        topAgents: [],
+        topProtocols: [],
+        networkFlows: []
+      });
+    }
+
+    // Multiple queries in parallel for better performance
+    const [summaryResponse, timelineResponse, detailsResponse, networkResponse] = await Promise.all([
+      // Query 1: Get summary counts
+      client.search({
+        index: indices.join(','),
+        body: {
+          size: 0,
+          track_total_hits: true,
+          query: {
+            range: {
+              '@timestamp': {
+                gte: startDate.toISOString(),
+                lte: endDate.toISOString()
+              }
+            }
+          },
+          aggs: {
+            critical_events: {
+              filter: {
+                range: {
+                  'rule.level': {
+                    gte: 12
+                  }
+                }
+              }
+            },
+            warning_events: {
+              filter: {
+                range: {
+                  'rule.level': {
+                    gte: 9,
+                    lt: 12
+                  }
+                }
+              }
+            }
+          }
+        }
+      }),
+      
+      // Query 2: Get timeline data
+      client.search({
+        index: indices.join(','),
+        body: {
+          size: 0,
+          query: {
+            range: {
+              '@timestamp': {
+                gte: startDate.toISOString(),
+                lte: endDate.toISOString()
+              }
+            }
+          },
+          aggs: {
+            events_over_time: {
+              date_histogram: {
+                field: '@timestamp',
+                calendar_interval: 'day'
+              },
+              aggs: {
+                critical_events: {
+                  filter: {
+                    range: {
+                      'rule.level': {
+                        gte: 12
+                      }
+                    }
+                  }
+                },
+                warning_events: {
+                  filter: {
+                    range: {
+                      'rule.level': {
+                        gte: 9,
+                        lt: 12
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }),
+      
+      // Query 3: Get rule levels and descriptions
+      client.search({
+        index: indices.join(','),
+        body: {
+          size: 0,
+          query: {
+            range: {
+              '@timestamp': {
+                gte: startDate.toISOString(),
+                lte: endDate.toISOString()
+              }
+            }
+          },
+          aggs: {
+            rule_levels: {
+              terms: {
+                field: 'rule.level',
+                size: 20
+              }
+            },
+            top_agents: {
+              terms: {
+                field: 'agent.name',
+                size: 20
+              }
+            },
+            rule_descriptions: {
+              terms: {
+                field: 'rule.description.keyword',
+                size: 50
+              }
+            }
+          }
+        }
+      }),
+      
+      // Query 4: Get network data
+      client.search({
+        index: indices.join(','),
+        body: {
+          size: 0,
+          query: {
+            bool: {
+              must: [
+                {
+                  range: {
+                    '@timestamp': {
+                      gte: startDate.toISOString(),
+                      lte: endDate.toISOString()
+                    }
+                  }
+                },
+                {
+                  exists: {
+                    field: 'network.srcIp'
+                  }
+                },
+                {
+                  exists: {
+                    field: 'network.destIp'
+                  }
+                }
+              ]
+            }
+          },
+          aggs: {
+            protocols: {
+              terms: {
+                field: 'network.protocol',
+                size: 20
+              }
+            },
+            network_flows: {
+              composite: {
+                size: 100,
+                sources: [
+                  { srcIp: { terms: { field: 'network.srcIp' } } },
+                  { destIp: { terms: { field: 'network.destIp' } } }
+                ]
+              }
+            }
+          }
+        }
+      })
+    ]);
+
+    // Process summary results
+    const totalEvents = summaryResponse.body.hits.total.value;
+    const criticalEvents = summaryResponse.body.aggregations.critical_events.doc_count;
+    const warningEvents = summaryResponse.body.aggregations.warning_events.doc_count;
+    const normalEvents = totalEvents - criticalEvents - warningEvents;
+
+    // Process timeline results
+    const timelineBuckets = timelineResponse.body.aggregations.events_over_time.buckets;
+    const timeline = timelineBuckets.map(bucket => ({
+      timestamp: bucket.key_as_string,
+      total: bucket.doc_count,
+      critical: bucket.critical_events.doc_count,
+      warning: bucket.warning_events.doc_count
+    }));
+
+    // Process rule details
+    const ruleLevels = detailsResponse.body.aggregations.rule_levels.buckets.map(bucket => ({
+      level: bucket.key,
+      count: bucket.doc_count
+    }));
+
+    const topAgents = detailsResponse.body.aggregations.top_agents.buckets.map(bucket => ({
+      name: bucket.key,
+      count: bucket.doc_count
+    }));
+
+    const ruleDescriptions = detailsResponse.body.aggregations.rule_descriptions.buckets.map(bucket => ({
+      description: bucket.key,
+      count: bucket.doc_count
+    }));
+
+    // Process network data
+    const topProtocols = networkResponse.body.aggregations.protocols.buckets.map(bucket => ({
+      name: bucket.key || 'unknown',
+      count: bucket.doc_count
+    }));
+
+    // Create network flows for Sankey diagram
+    const networkFlows = [];
+    if (networkResponse.body.aggregations.network_flows && 
+        networkResponse.body.aggregations.network_flows.buckets) {
+      
+      networkResponse.body.aggregations.network_flows.buckets.forEach(bucket => {
+        // Only include if source != destination (to avoid cycles)
+        if (bucket.key.srcIp !== bucket.key.destIp) {
+          networkFlows.push({
+            source: bucket.key.srcIp,
+            target: bucket.key.destIp,
+            value: bucket.doc_count
+          });
+        }
+      });
+    }
+
+    // Return results
+    res.json({
+      summary: {
+        total: totalEvents,
+        warnings: warningEvents,
+        critical: criticalEvents,
+        normal: normalEvents
+      },
+      timeline,
+      ruleLevels,
+      ruleDescriptions,
+      topAgents,
+      topProtocols,
+      networkFlows
+    });
+  } catch (error) {
+    console.error('Error in advanced analytics endpoint:', error);
+    next(error);
+  }
+});
+
+// Get endpoint-specific analytics
+router.get('/endpoint-analytics/:endpoint', async (req, res, next) => {
+  try {
+    const { endpoint } = req.params;
+    const { timeRange = '7d' } = req.query;
+    
+    if (!endpoint) {
+      return res.status(400).json({ error: 'Endpoint parameter is required' });
+    }
+    
+    // Parse time range
+    const { startDate, endDate } = parseTimeRange(timeRange);
+    
+    // Get OpenSearch client
+    const client = await getOpenSearchClient();
+
+    // Get all existing indices with logs-* pattern
+    const indicesResponse = await client.cat.indices({ 
+      index: 'logs-*', 
+      format: 'json' 
+    });
+    
+    let indices = [];
+    
+    if (indicesResponse.body && indicesResponse.body.length > 0) {
+      indices = indicesResponse.body.map(index => index.index);
+    }
+    
+    // If no indices found, return empty result
+    if (indices.length === 0) {
+      return res.json({
+        ruleLevels: [],
+        ruleGroups: [],
+        ruleDescriptions: [],
+        timeline: []
+      });
+    }
+
+    // Base query with time range and endpoint filter
+    const baseQuery = {
+      bool: {
+        must: [
+          {
+            range: {
+              '@timestamp': {
+                gte: startDate.toISOString(),
+                lte: endDate.toISOString()
+              }
+            }
+          },
+          {
+            term: {
+              'agent.name': endpoint
+            }
+          }
+        ]
+      }
+    };
+
+    // Multiple queries in parallel for better performance
+    const [ruleLevelsResponse, ruleDetailsResponse, timelineResponse] = await Promise.all([
+      // Query 1: Get rule levels
+      client.search({
+        index: indices.join(','),
+        body: {
+          size: 0,
+          query: baseQuery,
+          aggs: {
+            rule_levels: {
+              terms: {
+                field: 'rule.level',
+                size: 20
+              }
+            }
+          }
+        }
+      }),
+      
+      // Query 2: Get rule groups and descriptions
+      client.search({
+        index: indices.join(','),
+        body: {
+          size: 0,
+          query: baseQuery,
+          aggs: {
+            rule_groups: {
+              terms: {
+                field: 'rule.groups',
+                size: 20
+              }
+            },
+            rule_descriptions: {
+              terms: {
+                field: 'rule.description.keyword',
+                size: 30
+              }
+            }
+          }
+        }
+      }),
+      
+      // Query 3: Get timeline
+      client.search({
+        index: indices.join(','),
+        body: {
+          size: 0,
+          query: baseQuery,
+          aggs: {
+            events_over_time: {
+              date_histogram: {
+                field: '@timestamp',
+                calendar_interval: 'day'
+              }
+            }
+          }
+        }
+      })
+    ]);
+
+    // Process results
+    const ruleLevels = ruleLevelsResponse.body.aggregations.rule_levels.buckets.map(bucket => ({
+      level: bucket.key,
+      count: bucket.doc_count
+    }));
+
+    const ruleGroups = ruleDetailsResponse.body.aggregations.rule_groups.buckets.map(bucket => ({
+      name: bucket.key,
+      count: bucket.doc_count
+    }));
+
+    const ruleDescriptions = ruleDetailsResponse.body.aggregations.rule_descriptions.buckets.map(bucket => ({
+      description: bucket.key,
+      count: bucket.doc_count
+    }));
+
+    const timeline = timelineResponse.body.aggregations.events_over_time.buckets.map(bucket => ({
+      timestamp: bucket.key_as_string,
+      count: bucket.doc_count
+    }));
+
+    // Return results
+    res.json({
+      ruleLevels,
+      ruleGroups,
+      ruleDescriptions,
+      timeline
+    });
+  } catch (error) {
+    console.error('Error in endpoint analytics endpoint:', error);
+    next(error);
+  }
+});
+
 // Get logs with FIM information (files added, modified, deleted)
 router.get('/fim', async (req, res, next) => {
   try {
