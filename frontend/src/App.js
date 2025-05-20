@@ -25,6 +25,10 @@ import Nist from './components/ComplianceReports/Nist';
 import Pcidss from './components/ComplianceReports/Pcidss';
 import Tsc from './components/ComplianceReports/Tsc';
 import Vulnerability from './components/ThreatIntelligence/Vulnerability';
+import AboutUs from './components/StaticPages/AboutUs';
+import PrivacyPolicy from './components/StaticPages/PrivacyPolicy';
+import TermsOfService from './components/StaticPages/TermsOfService';
+import ContactUs from './components/StaticPages/ContactUs';
 import ThreatHunting from './components/ThreatIntelligence/ThreatHunting';
 import FIM from './components/Logs/FIM';
 import SentinelAI from './components/Logs/SentinelAI';
@@ -104,6 +108,10 @@ function App() {
               <Route path="users" element={<Navigate to="/profile" replace />} />
               <Route path="profile" element={<UserDetails />} />
               <Route path="settings" element={<Settings />} />
+              <Route path="about" element={<AboutUs />} />
+              <Route path="privacy" element={<PrivacyPolicy />} />
+              <Route path="terms" element={<TermsOfService />} />
+              <Route path="contact" element={<ContactUs />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Route>
           </Routes>
