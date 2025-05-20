@@ -32,6 +32,7 @@ import ContactUs from './components/StaticPages/ContactUs';
 import ThreatHunting from './components/ThreatIntelligence/ThreatHunting';
 import FIM from './components/Logs/FIM';
 import SentinelAI from './components/Logs/SentinelAI';
+import AdvancedAnalytics from './components/Logs/AdvancedAnalytics';
 
 
 // Theme configuration
@@ -92,6 +93,7 @@ function App() {
               <Route index element={<Dashboard />} />
               <Route path="logs" element={<LogDetails />} />
               <Route path="majorlogs" element={<MajorLogs />} />
+              <Route path="advanced-analytics" element={<AdvancedAnalytics />} />
               <Route path="fim" element={<FIM />} />
               <Route path="sentinelai" element={<SentinelAI />} />
               <Route path="remediation" element={<ManualRemediation />} />
