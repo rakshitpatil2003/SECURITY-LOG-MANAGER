@@ -1,0 +1,3 @@
+[2025-05-19T11:52:12.398Z] fetchLogsFromGraylog: {"message":"connect ECONNREFUSED 192.168.1.68:9000","timestamp":"2025-05-19T11:52:12.393Z","context":"fetchLogsFromGraylog"}
+[2025-05-19T11:52:18.451Z] fetchLogsFromGraylog: {"message":"connect ECONNREFUSED 192.168.1.68:9000","timestamp":"2025-05-19T11:52:18.451Z","context":"fetchLogsFromGraylog"}
+[2025-05-19T11:52:25.503Z] fetchLogsFromGraylog: {"message":"connect ECONNREFUSED 192.168.1.68:9000","timestamp":"2025-05-19T11:52:25.503Z","context":"fetchLogsFromGraylog"}

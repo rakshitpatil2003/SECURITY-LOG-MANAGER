@@ -174,7 +174,7 @@ const MajorLogs = () => {
   const theme = useTheme();
   const { setPageTitle } = useOutletContext();
   const [tabValue, setTabValue] = useState(0);
-  const [timeRange, setTimeRange] = useState('24h');
+  const [timeRange, setTimeRange] = useState('7d');
   const [logs, setLogs] = useState([]);
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);

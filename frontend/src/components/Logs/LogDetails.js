@@ -137,7 +137,7 @@ const LogDetails = () => {
   const [refreshTimerRef, setRefreshTimerRef] = useState(null);
   const [filtersExpanded, setFiltersExpanded] = useState(false);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
-  const [viewMode, setViewMode] = useState('table'); // 'table' or 'grid'
+  const [viewMode, setViewMode] = useState('grid'); // 'table' or 'grid'
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
   const [searchExecuted, setSearchExecuted] = useState(false);

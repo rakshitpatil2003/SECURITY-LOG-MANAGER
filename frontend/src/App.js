@@ -29,6 +29,10 @@ import AboutUs from './components/StaticPages/AboutUs';
 import PrivacyPolicy from './components/StaticPages/PrivacyPolicy';
 import TermsOfService from './components/StaticPages/TermsOfService';
 import ContactUs from './components/StaticPages/ContactUs';
+import ThreatHunting from './components/ThreatIntelligence/ThreatHunting';
+import FIM from './components/Logs/FIM';
+import SentinelAI from './components/Logs/SentinelAI';
+
 
 // Theme configuration
 const theme = createTheme({
@@ -88,6 +92,8 @@ function App() {
               <Route index element={<Dashboard />} />
               <Route path="logs" element={<LogDetails />} />
               <Route path="majorlogs" element={<MajorLogs />} />
+              <Route path="fim" element={<FIM />} />
+              <Route path="sentinelai" element={<SentinelAI />} />
               <Route path="remediation" element={<ManualRemediation />} />
               <Route path="tickets" element={<Tickets />} />
               <Route path="reports" element={<Reports />} />
@@ -98,6 +104,7 @@ function App() {
               <Route path="compliance/pcidss" element={<Pcidss />} />
               <Route path="compliance/tsc" element={<Tsc />} />
               <Route path="threatintelligence/vulnerability" element={<Vulnerability />} />
+              <Route path="threatintelligence/threathunting" element={<ThreatHunting />} />
               <Route path="users" element={<Navigate to="/profile" replace />} />
               <Route path="profile" element={<UserDetails />} />
               <Route path="settings" element={<Settings />} />

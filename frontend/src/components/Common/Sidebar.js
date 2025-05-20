@@ -38,6 +38,9 @@ import AssignmentTurnedInIcon from '@mui/icons-material/AssignmentTurnedIn';
 import AssuredWorkloadIcon from '@mui/icons-material/AssuredWorkload';
 import AddModeratorIcon from '@mui/icons-material/AddModerator';
 import BugReportIcon from '@mui/icons-material/BugReport';
+import InsertPageBreakIcon from '@mui/icons-material/InsertPageBreak';
+import SmartToyIcon from '@mui/icons-material/SmartToy';
+import PsychologyIcon from '@mui/icons-material/Psychology';
 // Sidebar width
 const drawerWidth = 240;
 
@@ -82,6 +85,18 @@ const Sidebar = ({ open, toggleDrawer }) => {
       icon: <SecurityIcon />,
       path: '/remediation',
       roles: ['administrator', 'L3-Analyst']
+    },
+    {
+    title: 'File Integrity Monitoring',
+    icon: <InsertPageBreakIcon />,
+    path: '/fim',
+    roles: ['administrator', 'L1-Analyst', 'L2-Analyst', 'L3-Analyst']
+    },
+    {
+    title: 'Sentinel AI',
+    icon: <SmartToyIcon />,
+    path: '/sentinelai',
+    roles: ['administrator', 'L1-Analyst', 'L2-Analyst', 'L3-Analyst']
     },
     {
       title: 'Tickets',
@@ -147,6 +162,12 @@ const Sidebar = ({ open, toggleDrawer }) => {
           title: 'Vulnerability Detection',
           icon: <BugReportIcon />,
           path: '/threatintelligence/vulnerability',
+          roles: ['administrator', 'L1-Analyst', 'L2-Analyst', 'L3-Analyst']
+        },
+        {
+          title: 'Threat Hunting',
+          icon: <BugReportIcon />,
+          path: '/threatintelligence/threathunting',
           roles: ['administrator', 'L1-Analyst', 'L2-Analyst', 'L3-Analyst']
         }
         // Other threat intelligence items can be added here
