@@ -33,6 +33,62 @@ export const getLogs = async (params = {}) => {
   }
 };
 
+// Add these functions to your services/logs.js file
+
+// Get advanced analytics
+export const getAdvancedAnalytics = async (timeRange = '7d') => {
+  try {
+    console.log('Fetching advanced analytics with timeRange:', timeRange);
+    
+    const response = await api.get('/logs/advanced-analytics', {
+      params: { timeRange }
+    });
+    
+    if (!response.data) {
+      throw new Error('Invalid response from server');
+    }
+    
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching advanced analytics:', error);
+    
+    // Detailed error handling
+    if (error.response) {
+      console.error('Error details:', error.response.data);
+      throw new Error(error.response.data.message || 'Failed to fetch analytics data');
+    }
+    
+    throw new Error('Network error. Please try again.');
+  }
+};
+
+// Get endpoint-specific analytics
+export const getEndpointAnalytics = async (endpoint, timeRange = '7d') => {
+  try {
+    console.log(`Fetching endpoint analytics for ${endpoint} with timeRange: ${timeRange}`);
+    
+    const response = await api.get(`/logs/endpoint-analytics/${endpoint}`, {
+      params: { timeRange }
+    });
+    
+    if (!response.data) {
+      throw new Error('Invalid response from server');
+    }
+    
+    return response.data;
+  } catch (error) {
+    console.error(`Error fetching endpoint analytics for ${endpoint}:`, error);
+    
+    // Detailed error handling
+    if (error.response) {
+      console.error('Error details:', error.response.data);
+      throw new Error(error.response.data.message || `Failed to fetch analytics for ${endpoint}`);
+    }
+    
+    throw new Error('Network error. Please try again.');
+  }
+};
+
 // Get File Integrity Monitoring logs
 export const getFimLogs = async (params = {}) => {
   try {

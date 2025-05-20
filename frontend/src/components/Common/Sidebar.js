@@ -69,9 +69,15 @@ const Sidebar = ({ open, toggleDrawer }) => {
       roles: ['administrator', 'L1-Analyst', 'L2-Analyst', 'L3-Analyst']
     },
     {
-      title: 'Logs',
+      title: 'Forensics Analysis',
       icon: <SecurityIcon />,
       path: '/logs',
+      roles: ['administrator', 'L1-Analyst', 'L2-Analyst', 'L3-Analyst']
+    },
+    {
+      title: 'Advanced Analytics',
+      icon: <PsychologyIcon />,
+      path: '/advanced-analytics',
       roles: ['administrator', 'L1-Analyst', 'L2-Analyst', 'L3-Analyst']
     },
     {

@@ -283,14 +283,18 @@ const AIResponseView = ({ data, onClose, onViewFullDetails, isMlResponse = false
     animationData: siriAnimation,
     rendererSettings: {
       preserveAspectRatio: 'xMidYMid slice'
-    }
+    },
+    speed: 2,
   };
   
   // Handle animation complete
   const handleAnimationComplete = () => {
+  // Show animation for 1 second (1000ms) then proceed
+  setTimeout(() => {
     setAnimationComplete(true);
-    setTimeout(() => setTypewriterStarted(true), 300);
-  };
+    setTypewriterStarted(true);
+  }, 100); // 1000ms = 1 second
+};
   
   // Get the AI response from data
   const getAIResponse = () => {
