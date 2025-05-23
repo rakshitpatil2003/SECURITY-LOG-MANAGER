@@ -1,12 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const { getOpenSearchClient, getIndexNameForDate, getIndexPatternForDateRange } = require('../config/opensearch');
-//const { keycloakMiddleware } = require('../config/keycloak');
 const { ApiError } = require('../utils/errorHandler');
 const { authenticate, hasRole } = require('../middleware/authMiddleware');
 
-// Apply Keycloak authentication middleware to all routes
-//router.use(keycloakMiddleware);
 router.use(authenticate);
 
 // Utility function to parse time range parameters
@@ -743,6 +740,8 @@ router.get('/endpoint-analytics/:endpoint', async (req, res, next) => {
   }
 });
 
+
+
 // Get logs with FIM information (files added, modified, deleted)
 router.get('/fim', async (req, res, next) => {
   try {
@@ -984,6 +983,1083 @@ router.get('/fim', async (req, res, next) => {
     });
   } catch (error) {
     console.error('Error in FIM logs route:', error);
+    next(error);
+  }
+});
+
+// Get logs with SCA information
+router.get('/sca', async (req, res, next) => {
+  try {
+    const {
+      page = 1,
+      limit = 100,
+      search = '',
+      sortBy = '@timestamp',
+      sortOrder = 'desc',
+      timeRange = '24h',
+      result = '' // For filtering by result (passed, failed, not applicable)
+    } = req.query;
+
+    // Calculate pagination values
+    const currentPage = parseInt(page, 10);
+    let pageSize = parseInt(limit, 10);
+    
+    // Cap the maximum page size
+    if (pageSize > 100000) {
+      console.warn(`Requested size ${pageSize} exceeds max limit of 100000, capping at 100000`);
+      pageSize = 100000;
+    }
+    
+    const from = (currentPage - 1) * pageSize;
+
+    // Parse time range
+    const { startDate, endDate } = parseTimeRange(timeRange);
+    
+    // Get OpenSearch client
+    const client = await getOpenSearchClient();
+
+    // Build query for logs with SCA information
+    const query = {
+      bool: {
+        must: [
+          // Time range filter
+          {
+            range: {
+              '@timestamp': {
+                gte: startDate.toISOString(),
+                lte: endDate.toISOString()
+              }
+            }
+          },
+          // Filter for logs with 'sca' in rule.groups
+          {
+            term: {
+              'rule.groups': 'sca'
+            }
+          }
+        ]
+      }
+    };
+
+    // Add result filter if provided
+    if (result) {
+      const resultTypes = result.split(',').filter(Boolean);
+      if (resultTypes.length > 0) {
+        // Filter by specified results (passed, failed, not applicable)
+        query.bool.must.push({
+          terms: {
+            'data.sca.check.result': resultTypes
+          }
+        });
+      }
+    }
+
+    // Add search if provided
+    if (search && search.trim() !== '') {
+      query.bool.must.push({
+        multi_match: {
+          query: search,
+          fields: [
+            'rule.description^3',
+            'data.sca.policy^2',
+            'data.sca.check.title^2',
+            'agent.name',
+            'data.sca.check.id',
+            'raw_log.message'
+          ],
+          type: "best_fields",
+          fuzziness: "AUTO"
+        }
+      });
+    }
+
+    // Get all existing indices with logs-* pattern
+    const indicesResponse = await client.cat.indices({ 
+      index: 'logs-*', 
+      format: 'json' 
+    });
+    
+    let indices = [];
+    
+    if (indicesResponse.body && indicesResponse.body.length > 0) {
+      indices = indicesResponse.body.map(index => index.index);
+    }
+    
+    // If no indices found, return empty result
+    if (indices.length === 0) {
+      console.log('No indices found');
+      return res.json({
+        logs: [],
+        stats: {
+          total: 0,
+          byResult: [],
+          byAgent: [],
+          timeDistribution: []
+        },
+        pagination: {
+          page: currentPage,
+          limit: pageSize,
+          total: 0,
+          pages: 0
+        }
+      });
+    }
+
+    // First get total count and stats with a size 0 query for accuracy
+    const statsResponse = await client.search({
+      index: indices.join(','),
+      body: {
+        size: 0,
+        track_total_hits: true, // Ensure accurate counting for large result sets
+        query: query,
+        aggs: {
+          // Result distribution
+          results: {
+            terms: {
+              field: 'data.sca.check.result.keyword',
+              size: 20,
+              missing: "No Result" // Handle logs that don't have this field
+            }
+          },
+          // Agent distribution
+          agents: {
+            terms: {
+              field: 'agent.name',
+              size: 50
+            }
+          },
+          // Time distribution with result breakdown
+          time_distribution: {
+            date_histogram: {
+              field: '@timestamp',
+              calendar_interval: 'day'
+            },
+            aggs: {
+              results: {
+                terms: {
+                  field: 'data.sca.check.result.keyword',
+                  size: 20,
+                  missing: "No Result"
+                }
+              }
+            }
+          },
+          // Policy distribution
+          policies: {
+            terms: {
+              field: 'data.sca.policy.keyword',
+              size: 50
+            }
+          }
+        }
+      }
+    });
+
+    // Get the total count from the stats query
+    const totalCount = statsResponse.body.hits.total.value;
+    
+    console.log(`Found ${totalCount} total logs with SCA information`);
+
+    // Now get the specific page of logs
+    const logsResponse = await client.search({
+      index: indices.join(','),
+      body: {
+        from,
+        size: pageSize,
+        query,
+        sort: [
+          {
+            [sortBy]: {
+              order: sortOrder
+            }
+          }
+        ]
+      }
+    });
+
+    // Format the logs
+    const logs = logsResponse.body.hits.hits.map(hit => ({
+      ...hit._source,
+      id: hit._id,
+      _score: hit._score
+    }));
+
+    // Extract aggregation results
+    const aggs = statsResponse.body.aggregations;
+
+    // Process time distribution to include results breakdown
+    const timeDistribution = aggs.time_distribution.buckets.map(bucket => {
+      // Get result buckets or empty array if not available
+      const resultBuckets = bucket.results?.buckets || [];
+      
+      // Create a result map for easier access
+      const resultMap = {};
+      resultBuckets.forEach(rb => {
+        resultMap[rb.key] = rb.doc_count;
+      });
+      
+      return {
+        date: bucket.key_as_string,
+        count: bucket.doc_count,
+        results: {
+          passed: resultMap.passed || 0,
+          failed: resultMap.failed || 0,
+          'not applicable': resultMap['not applicable'] || 0,
+          'No Result': resultMap['No Result'] || 0
+        }
+      };
+    });
+
+    // Format the statistics
+    const stats = {
+      total: totalCount,
+      byResult: aggs.results.buckets.map(bucket => ({
+        result: bucket.key,
+        count: bucket.doc_count
+      })),
+      byAgent: aggs.agents.buckets.map(bucket => ({
+        name: bucket.key,
+        count: bucket.doc_count
+      })),
+      byPolicy: aggs.policies.buckets.map(bucket => ({
+        policy: bucket.key,
+        count: bucket.doc_count
+      })),
+      timeDistribution
+    };
+
+    // Calculate total pages
+    const totalPages = Math.ceil(totalCount / pageSize);
+
+    // Return results with pagination
+    res.json({
+      logs,
+      stats,
+      pagination: {
+        page: currentPage,
+        limit: pageSize,
+        total: totalCount,
+        pages: totalPages
+      }
+    });
+  } catch (error) {
+    console.error('Error in SCA logs route:', error);
+    next(error);
+  }
+});
+
+// Get logs with authentication sessions information
+router.get('/sessions', async (req, res, next) => {
+  try {
+    const {
+      page = 1,
+      limit = 100,
+      search = '',
+      sortBy = '@timestamp',
+      sortOrder = 'desc',
+      timeRange = '24h',
+      authResult = '', // For filtering by authentication_success or authentication_failed
+      deviceType = '' // For filtering by device type (firewall, windows, linux, mac)
+    } = req.query;
+
+    // Calculate pagination values
+    const currentPage = parseInt(page, 10);
+    let pageSize = parseInt(limit, 10);
+    
+    // Cap the maximum page size
+    if (pageSize > 100000) {
+      console.warn(`Requested size ${pageSize} exceeds max limit of 100000, capping at 100000`);
+      pageSize = 100000;
+    }
+    
+    const from = (currentPage - 1) * pageSize;
+
+    // Parse time range
+    const { startDate, endDate } = parseTimeRange(timeRange);
+    
+    // Get OpenSearch client
+    const client = await getOpenSearchClient();
+
+    // Build query for logs with authentication_success or authentication_failed
+    const query = {
+      bool: {
+        must: [
+          // Time range filter
+          {
+            range: {
+              '@timestamp': {
+                gte: startDate.toISOString(),
+                lte: endDate.toISOString()
+              }
+            }
+          },
+          // Filter for logs with authentication_success or authentication_failed in rule.groups
+          {
+            bool: {
+              should: [
+                {
+                  term: {
+                    'rule.groups': 'authentication_success'
+                  }
+                },
+                {
+                  term: {
+                    'rule.groups': 'authentication_failed'
+                  }
+                }
+              ],
+              minimum_should_match: 1
+            }
+          }
+        ]
+      }
+    };
+
+    // Add device type filter if provided
+    if (deviceType) {
+      const deviceFilters = deviceType.split(',').filter(Boolean);
+      if (deviceFilters.length > 0) {
+        const deviceFilterQuery = {
+          bool: {
+            should: []
+          }
+        };
+
+        // Add filters for each device type
+        deviceFilters.forEach(type => {
+          switch (type.toLowerCase()) {
+            case 'firewall':
+              deviceFilterQuery.bool.should.push({
+                term: {
+                  'rule.groups': 'Firewall'
+                }
+              });
+              break;
+            case 'windows':
+              deviceFilterQuery.bool.should.push({
+                term: {
+                  'rule.groups': 'windows'
+                }
+              });
+              break;
+            case 'linux':
+              // Syslog but NOT Firewall
+              deviceFilterQuery.bool.should.push({
+                bool: {
+                  must: [
+                    {
+                      term: {
+                        'rule.groups': 'syslog'
+                      }
+                    },
+                    {
+                      bool: {
+                        must_not: {
+                          term: {
+                            'rule.groups': 'Firewall'
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              });
+              break;
+            case 'mac':
+              // Either 'mac' or 'apple'
+              deviceFilterQuery.bool.should.push({
+                bool: {
+                  should: [
+                    {
+                      term: {
+                        'rule.groups': 'macOS'
+                      }
+                    },
+                    {
+                      term: {
+                        'rule.groups': 'apple'
+                      }
+                    }
+                  ],
+                  minimum_should_match: 1
+                }
+              });
+              break;
+          }
+        });
+
+        deviceFilterQuery.bool.minimum_should_match = 1;
+        query.bool.must.push(deviceFilterQuery);
+      }
+    }
+
+    // Add authentication result filter if provided
+    if (authResult) {
+      const authFilters = authResult.split(',').filter(Boolean);
+      if (authFilters.length > 0) {
+        const authFilterQuery = {
+          bool: {
+            should: []
+          }
+        };
+
+        // Add filters for each auth result
+        authFilters.forEach(result => {
+          switch (result.toLowerCase()) {
+            case 'success':
+              authFilterQuery.bool.should.push({
+                term: {
+                  'rule.groups': 'authentication_success'
+                }
+              });
+              break;
+            case 'failed':
+              authFilterQuery.bool.should.push({
+                term: {
+                  'rule.groups': 'authentication_failed'
+                }
+              });
+              break;
+          }
+        });
+
+        authFilterQuery.bool.minimum_should_match = 1;
+        query.bool.must.push(authFilterQuery);
+      }
+    }
+
+    // Add search if provided
+    if (search && search.trim() !== '') {
+      query.bool.must.push({
+        multi_match: {
+          query: search,
+          fields: [
+            'rule.description^3',
+            'agent.name^2',
+            'data.dstuser',
+            'data.srcuser',
+            'data.user',
+            'data.win.eventdata.targetUserName',
+            'raw_log.message'
+          ],
+          type: "best_fields",
+          fuzziness: "AUTO"
+        }
+      });
+    }
+
+    // Get all existing indices with logs-* pattern
+    const indicesResponse = await client.cat.indices({ 
+      index: 'logs-*', 
+      format: 'json' 
+    });
+    
+    let indices = [];
+    
+    if (indicesResponse.body && indicesResponse.body.length > 0) {
+      indices = indicesResponse.body.map(index => index.index);
+    }
+    
+    // If no indices found, return empty result
+    if (indices.length === 0) {
+      console.log('No indices found');
+      return res.json({
+        logs: [],
+        stats: {
+          total: 0,
+          byAuthResult: [],
+          byDeviceType: [],
+          byAgent: [],
+          timeDistribution: []
+        },
+        pagination: {
+          page: currentPage,
+          limit: pageSize,
+          total: 0,
+          pages: 0
+        }
+      });
+    }
+
+    // First get total count and stats with a size 0 query for accuracy
+    const statsResponse = await client.search({
+      index: indices.join(','),
+      body: {
+        size: 0,
+        track_total_hits: true, // Ensure accurate counting for large result sets
+        query: query,
+        aggs: {
+          // Authentication result distribution (success/failed)
+          auth_results: {
+            filters: {
+              filters: {
+                success: {
+                  term: {
+                    'rule.groups': 'authentication_success'
+                  }
+                },
+                failed: {
+                  term: {
+                    'rule.groups': 'authentication_failed'
+                  }
+                }
+              }
+            }
+          },
+          
+          // Device type distribution based on rule groups
+          device_types: {
+            filters: {
+              filters: {
+                firewall: {
+                  term: {
+                    'rule.groups': 'Firewall'
+                  }
+                },
+                windows: {
+                  term: {
+                    'rule.groups': 'windows'
+                  }
+                },
+                linux: {
+                  bool: {
+                    must: [
+                      {
+                        term: {
+                          'rule.groups': 'syslog'
+                        }
+                      },
+                      {
+                        bool: {
+                          must_not: {
+                            term: {
+                              'rule.groups': 'Firewall'
+                            }
+                          }
+                        }
+                      }
+                    ]
+                  }
+                },
+                mac: {
+                  bool: {
+                    should: [
+                      {
+                        term: {
+                          'rule.groups': 'macOS'
+                        }
+                      },
+                      {
+                        term: {
+                          'rule.groups': 'apple'
+                        }
+                      }
+                    ],
+                    minimum_should_match: 1
+                  }
+                }
+              }
+            }
+          },
+          
+          // Authentication results by device type (for more detailed stats)
+          auth_by_device: {
+            filters: {
+              filters: {
+                firewall_success: {
+                  bool: {
+                    must: [
+                      { term: { 'rule.groups': 'Firewall' } },
+                      { term: { 'rule.groups': 'authentication_success' } }
+                    ]
+                  }
+                },
+                firewall_failed: {
+                  bool: {
+                    must: [
+                      { term: { 'rule.groups': 'Firewall' } },
+                      { term: { 'rule.groups': 'authentication_failed' } }
+                    ]
+                  }
+                },
+                windows_success: {
+                  bool: {
+                    must: [
+                      { term: { 'rule.groups': 'windows' } },
+                      { term: { 'rule.groups': 'authentication_success' } }
+                    ]
+                  }
+                },
+                windows_failed: {
+                  bool: {
+                    must: [
+                      { term: { 'rule.groups': 'windows' } },
+                      { term: { 'rule.groups': 'authentication_failed' } }
+                    ]
+                  }
+                },
+                linux_success: {
+                  bool: {
+                    must: [
+                      { term: { 'rule.groups': 'syslog' } },
+                      { term: { 'rule.groups': 'authentication_success' } },
+                      {
+                        bool: {
+                          must_not: {
+                            term: { 'rule.groups': 'Firewall' }
+                          }
+                        }
+                      }
+                    ]
+                  }
+                },
+                linux_failed: {
+                  bool: {
+                    must: [
+                      { term: { 'rule.groups': 'syslog' } },
+                      { term: { 'rule.groups': 'authentication_failed' } },
+                      {
+                        bool: {
+                          must_not: {
+                            term: { 'rule.groups': 'Firewall' }
+                          }
+                        }
+                      }
+                    ]
+                  }
+                },
+                mac_success: {
+                  bool: {
+                    must: [
+                      {
+                        bool: {
+                          should: [
+                            { term: { 'rule.groups': 'macOS' } },
+                            { term: { 'rule.groups': 'apple' } }
+                          ],
+                          minimum_should_match: 1
+                        }
+                      },
+                      { term: { 'rule.groups': 'authentication_success' } }
+                    ]
+                  }
+                },
+                mac_failed: {
+                  bool: {
+                    must: [
+                      {
+                        bool: {
+                          should: [
+                            { term: { 'rule.groups': 'macOS' } },
+                            { term: { 'rule.groups': 'apple' } }
+                          ],
+                          minimum_should_match: 1
+                        }
+                      },
+                      { term: { 'rule.groups': 'authentication_failed' } }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          
+          // Agent distribution
+          agents: {
+            terms: {
+              field: 'agent.name',
+              size: 50
+            }
+          },
+          
+          // Time distribution with auth result breakdown
+          time_distribution: {
+            date_histogram: {
+              field: '@timestamp',
+              calendar_interval: 'day'
+            },
+            aggs: {
+              success: {
+                filter: {
+                  term: { 'rule.groups': 'authentication_success' }
+                }
+              },
+              failed: {
+                filter: {
+                  term: { 'rule.groups': 'authentication_failed' }
+                }
+              }
+            }
+          }
+        }
+      }
+    });
+
+    // Get the total count from the stats query
+    const totalCount = statsResponse.body.hits.total.value;
+    
+    console.log(`Found ${totalCount} total logs with authentication sessions`);
+
+    // Now get the specific page of logs
+    const logsResponse = await client.search({
+      index: indices.join(','),
+      body: {
+        from,
+        size: pageSize,
+        query,
+        sort: [
+          {
+            [sortBy]: {
+              order: sortOrder
+            }
+          }
+        ]
+      }
+    });
+
+    // Format the logs
+    const logs = logsResponse.body.hits.hits.map(hit => ({
+      ...hit._source,
+      id: hit._id,
+      _score: hit._score
+    }));
+
+    // Extract aggregation results
+    const aggs = statsResponse.body.aggregations;
+
+    // Process time distribution to include auth results
+    const timeDistribution = aggs.time_distribution.buckets.map(bucket => {
+      return {
+        date: bucket.key_as_string,
+        count: bucket.doc_count,
+        results: {
+          success: bucket.success.doc_count || 0,
+          failed: bucket.failed.doc_count || 0
+        }
+      };
+    });
+
+    // Format the statistics
+    const stats = {
+      total: totalCount,
+      byAuthResult: {
+        success: aggs.auth_results.buckets.success.doc_count || 0,
+        failed: aggs.auth_results.buckets.failed.doc_count || 0
+      },
+      byDeviceType: {
+        firewall: aggs.device_types.buckets.firewall.doc_count || 0,
+        windows: aggs.device_types.buckets.windows.doc_count || 0,
+        linux: aggs.device_types.buckets.linux.doc_count || 0,
+        mac: aggs.device_types.buckets.mac.doc_count || 0
+      },
+      byAuthAndDevice: {
+        firewall: {
+          success: aggs.auth_by_device.buckets.firewall_success.doc_count || 0,
+          failed: aggs.auth_by_device.buckets.firewall_failed.doc_count || 0
+        },
+        windows: {
+          success: aggs.auth_by_device.buckets.windows_success.doc_count || 0,
+          failed: aggs.auth_by_device.buckets.windows_failed.doc_count || 0
+        },
+        linux: {
+          success: aggs.auth_by_device.buckets.linux_success.doc_count || 0,
+          failed: aggs.auth_by_device.buckets.linux_failed.doc_count || 0
+        },
+        mac: {
+          success: aggs.auth_by_device.buckets.mac_success.doc_count || 0,
+          failed: aggs.auth_by_device.buckets.mac_failed.doc_count || 0
+        }
+      },
+      byAgent: (aggs.agents?.buckets || []).map(bucket => ({
+        name: bucket.key,
+        count: bucket.doc_count
+      })),
+      timeDistribution
+    };
+
+    // Calculate total pages
+    const totalPages = Math.ceil(totalCount / pageSize);
+
+    // Return results with pagination
+    res.json({
+      logs,
+      stats,
+      pagination: {
+        page: currentPage,
+        limit: pageSize,
+        total: totalCount,
+        pages: totalPages
+      }
+    });
+  } catch (error) {
+    console.error('Error in session logs route:', error);
+    next(error);
+  }
+});
+
+router.get('/malware', async (req, res, next) => {
+  try {
+    const {
+      page = 1,
+      limit = 100,
+      search = '',
+      sortBy = '@timestamp',
+      sortOrder = 'desc',
+      timeRange = '24h',
+      sourceType = '' // For filtering by source type (VirusScanner, SentinelAI, rootcheck)
+    } = req.query;
+
+    // Calculate pagination values
+    const currentPage = parseInt(page, 10);
+    let pageSize = parseInt(limit, 10);
+    
+    // Cap the maximum page size
+    if (pageSize > 100000) {
+      console.warn(`Requested size ${pageSize} exceeds max limit of 100000, capping at 100000`);
+      pageSize = 100000;
+    }
+    
+    const from = (currentPage - 1) * pageSize;
+
+    // Parse time range
+    const { startDate, endDate } = parseTimeRange(timeRange);
+    
+    // Get OpenSearch client
+    const client = await getOpenSearchClient();
+
+    // Build query for malware-related logs
+    const query = {
+      bool: {
+        must: [
+          // Time range filter
+          {
+            range: {
+              '@timestamp': {
+                gte: startDate.toISOString(),
+                lte: endDate.toISOString()
+              }
+            }
+          },
+          // Filter for logs with VirusScanner, SentinelAI, or rootcheck in rule.groups
+          {
+            bool: {
+              should: [
+                { term: { 'rule.groups': 'VirusScanner' } },
+                { term: { 'rule.groups': 'SentinelAI' } },
+                { term: { 'rule.groups': 'rootcheck' } }
+              ],
+              minimum_should_match: 1
+            }
+          }
+        ]
+      }
+    };
+
+    // Add source type filter if provided
+    if (sourceType) {
+      const sourceTypes = sourceType.split(',').filter(Boolean);
+      if (sourceTypes.length > 0) {
+        // Replace the existing should clause with filtered source types
+        query.bool.must[1] = {
+          bool: {
+            should: sourceTypes.map(type => ({
+              term: { 'rule.groups': type }
+            })),
+            minimum_should_match: 1
+          }
+        };
+      }
+    }
+
+    // Add search if provided
+    if (search && search.trim() !== '') {
+      query.bool.must.push({
+        multi_match: {
+          query: search,
+          fields: [
+            'rule.description^3',
+            'agent.name^2',
+            'rule.level',
+            'rule.groups',
+            'raw_log.message'
+          ],
+          type: "best_fields",
+          fuzziness: "AUTO"
+        }
+      });
+    }
+
+    // Get all existing indices with logs-* pattern
+    const indicesResponse = await client.cat.indices({ 
+      index: 'logs-*', 
+      format: 'json' 
+    });
+    
+    let indices = [];
+    
+    if (indicesResponse.body && indicesResponse.body.length > 0) {
+      indices = indicesResponse.body.map(index => index.index);
+    }
+    
+    // If no indices found, return empty result
+    if (indices.length === 0) {
+      console.log('No indices found');
+      return res.json({
+        logs: [],
+        stats: {
+          total: 0,
+          bySourceType: [],
+          byAgent: [],
+          byDescription: [],
+          timeDistribution: []
+        },
+        pagination: {
+          page: currentPage,
+          limit: pageSize,
+          total: 0,
+          pages: 0
+        }
+      });
+    }
+
+    // First get total count and stats with a size 0 query for accuracy
+    const statsResponse = await client.search({
+      index: indices.join(','),
+      body: {
+        size: 0,
+        track_total_hits: true, // Ensure accurate counting for large result sets
+        query: query,
+        aggs: {
+          // Source type distribution (VirusScanner, SentinelAI, rootcheck)
+          source_types: {
+            terms: {
+              field: 'rule.groups',
+              size: 10,
+              include: ['VirusScanner', 'SentinelAI', 'rootcheck']
+            }
+          },
+          // Agent distribution
+          agents: {
+            terms: {
+              field: 'agent.name',
+              size: 50
+            }
+          },
+          // Top descriptions
+          descriptions: {
+            terms: {
+              field: 'rule.description.keyword',
+              size: 7
+            }
+          },
+          // Time distribution with source type breakdown
+          time_distribution: {
+            date_histogram: {
+              field: '@timestamp',
+              calendar_interval: 'day'
+            },
+            aggs: {
+              source_types: {
+                terms: {
+                  field: 'rule.groups',
+                  size: 10,
+                  include: ['VirusScanner', 'SentinelAI', 'rootcheck']
+                }
+              }
+            }
+          }
+        }
+      }
+    });
+
+    // Get the total count from the stats query
+    const totalCount = statsResponse.body.hits.total.value;
+    
+    console.log(`Found ${totalCount} total logs with malware information`);
+
+    // Now get the specific page of logs
+    const logsResponse = await client.search({
+      index: indices.join(','),
+      body: {
+        from,
+        size: pageSize,
+        query,
+        sort: [
+          {
+            [sortBy]: {
+              order: sortOrder
+            }
+          }
+        ]
+      }
+    });
+
+    // Format the logs
+    const logs = logsResponse.body.hits.hits.map(hit => ({
+      ...hit._source,
+      id: hit._id,
+      _score: hit._score
+    }));
+
+    // Extract aggregation results
+    const aggs = statsResponse.body.aggregations;
+
+    // Process time distribution to include source type breakdown
+    const timeDistribution = aggs.time_distribution.buckets.map(bucket => {
+      // Get source type buckets or empty array if not available
+      const sourceTypeBuckets = bucket.source_types?.buckets || [];
+      
+      // Create a source type map for easier access
+      const sourceTypeMap = {};
+      sourceTypeBuckets.forEach(stb => {
+        sourceTypeMap[stb.key] = stb.doc_count;
+      });
+      
+      return {
+        date: bucket.key_as_string,
+        count: bucket.doc_count,
+        sourceTypes: {
+          VirusScanner: sourceTypeMap.VirusScanner || 0,
+          SentinelAI: sourceTypeMap.SentinelAI || 0,
+          rootcheck: sourceTypeMap.rootcheck || 0
+        }
+      };
+    });
+
+    // Format the statistics
+    const stats = {
+      total: totalCount,
+      bySourceType: aggs.source_types.buckets.map(bucket => ({
+        type: bucket.key,
+        count: bucket.doc_count
+      })),
+      byAgent: aggs.agents.buckets.map(bucket => ({
+        name: bucket.key,
+        count: bucket.doc_count
+      })),
+      byDescription: aggs.descriptions.buckets.map(bucket => ({
+        description: bucket.key,
+        count: bucket.doc_count
+      })),
+      timeDistribution
+    };
+
+    // Calculate total pages
+    const totalPages = Math.ceil(totalCount / pageSize);
+
+    // Return results with pagination
+    res.json({
+      logs,
+      stats,
+      pagination: {
+        page: currentPage,
+        limit: pageSize,
+        total: totalCount,
+        pages: totalPages
+      }
+    });
+  } catch (error) {
+    console.error('Error in malware logs route:', error);
     next(error);
   }
 });

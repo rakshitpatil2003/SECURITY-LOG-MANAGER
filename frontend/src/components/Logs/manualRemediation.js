@@ -37,8 +37,19 @@ const ManualRemediation = () => {
   const { setPageTitle } = useOutletContext();
   const theme = useTheme();
   
-  // URL to your web-based terminal (Jump Server)
-  const remediationConsoleUrl = 'http://192.168.1.139:80/'; 
+  // Get Jump Server URL from environment variable or construct from current host
+  const getJumpServerUrl = () => {
+    // Try to get from environment variable first
+    if (process.env.REACT_APP_JUMP_SERVER_URL) {
+      return process.env.REACT_APP_JUMP_SERVER_URL;
+    }
+    
+    // If not available, construct from current hostname/IP
+    const currentHost = window.location.hostname;
+    return `http://${currentHost}:80/`;
+  };
+  
+  const remediationConsoleUrl = getJumpServerUrl();
   
   // Set page title when component mounts
   useEffect(() => {
@@ -71,6 +82,16 @@ const ManualRemediation = () => {
         title: 'View Recent Logins',
         command: 'last -a | head -20',
         description: 'Displays most recent login attempts including source IP addresses'
+      },
+      {
+        title: 'Check System Logs',
+        command: 'tail -f /var/log/syslog | grep -i error',
+        description: 'Monitor system logs for error messages in real-time'
+      },
+      {
+        title: 'Find Large Files',
+        command: 'find / -type f -size +100M -exec ls -lh {} \\; 2>/dev/null',
+        description: 'Locate files larger than 100MB that might be suspicious'
       }
     ],
     windows: [
@@ -93,6 +114,16 @@ const ManualRemediation = () => {
         title: 'Network Isolation',
         command: 'netsh advfirewall set allprofiles firewallpolicy blockinbound,blockoutbound',
         description: 'Blocks all inbound and outbound network traffic'
+      },
+      {
+        title: 'Check Event Logs',
+        command: 'Get-EventLog -LogName Security -Newest 50 | Where-Object {$_.EntryType -eq "FailureAudit"}',
+        description: 'PowerShell command to check recent security failures'
+      },
+      {
+        title: 'List Startup Programs',
+        command: 'Get-CimInstance Win32_StartupCommand | Select-Object Name, command, Location',
+        description: 'List all programs that start automatically with Windows'
       }
     ]
   };
@@ -127,7 +158,7 @@ const ManualRemediation = () => {
         <Grid container spacing={2} alignItems="center">
           <Grid item xs={12} md={8}>
             <Typography variant="h4" gutterBottom fontWeight="500">
-              CyberSentinel Privilege Management
+              CyberSentinel Manual Remediation
             </Typography>
             <Typography variant="subtitle1">
               Securely access and remediate compromised endpoints with advanced privilege controls
@@ -157,9 +188,25 @@ const ManualRemediation = () => {
       
       <Alert severity="info" sx={{ mb: 4 }}>
         <Typography variant="body1">
-          <strong>Note:</strong> Use the CyberSentinel Privilege Management Console only for authorized remediation activities. All actions are logged and monitored.
+          <strong>Note:</strong> Use the CyberSentinel Manual Remediation Console only for authorized remediation activities. All actions are logged and monitored.
         </Typography>
       </Alert>
+      
+      {/* Console Access Info */}
+      <Paper sx={{ p: 2, mb: 4, bgcolor: 'info.light', color: 'info.contrastText' }}>
+        <Typography variant="h6" gutterBottom>
+          Console Access Information
+        </Typography>
+        <Typography variant="body2">
+          <strong>URL:</strong> {remediationConsoleUrl}
+        </Typography>
+        <Typography variant="body2">
+          <strong>Default Credentials:</strong> admin / ChangeMe
+        </Typography>
+        <Typography variant="caption" sx={{ fontStyle: 'italic' }}>
+          Please change the default password after first login for security purposes.
+        </Typography>
+      </Paper>
       
       {/* Best Practices Section */}
       <Typography variant="h5" gutterBottom sx={{ mt: 2, mb: 3, fontWeight: 500 }}>
@@ -307,7 +354,7 @@ const ManualRemediation = () => {
         </Box>
         
         <Typography paragraph>
-          For complex security incidents, use the CyberSentinel Privilege Management Console to:
+          For complex security incidents, use the CyberSentinel Manual Remediation Console to:
         </Typography>
         
         <List>
@@ -354,7 +401,7 @@ const ManualRemediation = () => {
             onClick={handleOpenConsole}
             sx={{ py: 1.5, px: 3 }}
           >
-            Launch CyberSentinel Console
+            Launch Manual Remediation Console
           </Button>
         </Box>
       </Paper>

@@ -123,6 +123,108 @@ export const getFimLogs = async (params = {}) => {
   }
 };
 
+// Get SCA logs
+export const getScaLogs = async (params = {}) => {
+  try {
+    console.log('Fetching SCA logs with params:', params);
+    
+    const response = await api.get('/logs/sca', { params });
+    
+    if (!response.data || !response.data.logs) {
+      throw new Error('Invalid response format from server');
+    }
+    
+    console.log(`Received ${response.data.logs.length} SCA logs out of ${response.data.pagination?.total}`);
+    
+    // Log first few results to verify pagination works
+    if (params.page && params.page > 1 && response.data.logs?.length > 0) {
+      console.log('Page number requested:', params.page);
+      console.log('First few log IDs on this page:', 
+        response.data.logs.slice(0, 3).map(log => log.id || log._id));
+    }
+    
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching SCA logs:', error);
+    
+    // Detailed error handling
+    if (error.response) {
+      console.error('Error details:', error.response.data);
+      throw new Error(error.response.data.message || 'Failed to fetch SCA logs');
+    }
+    
+    throw new Error('Network error. Please try again.');
+  }
+};
+
+// Get session authentication logs
+export const getSessionLogs = async (params = {}) => {
+  try {
+    console.log('Fetching session logs with params:', params);
+    
+    const response = await api.get('/logs/sessions', { params });
+    
+    if (!response.data || !response.data.logs) {
+      throw new Error('Invalid response format from server');
+    }
+    
+    console.log(`Received ${response.data.logs.length} session logs out of ${response.data.pagination?.total}`);
+    
+    // Log first few results to verify pagination works
+    if (params.page && params.page > 1 && response.data.logs?.length > 0) {
+      console.log('Page number requested:', params.page);
+      console.log('First few log IDs on this page:', 
+        response.data.logs.slice(0, 3).map(log => log.id || log._id));
+    }
+    
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching session logs:', error);
+    
+    // Detailed error handling
+    if (error.response) {
+      console.error('Error details:', error.response.data);
+      throw new Error(error.response.data.message || 'Failed to fetch session logs');
+    }
+    
+    throw new Error('Network error. Please try again.');
+  }
+};
+
+// Get Malware logs
+export const getMalwareLogs = async (params = {}) => {
+  try {
+    console.log('Fetching malware logs with params:', params);
+    
+    const response = await api.get('/logs/malware', { params });
+    
+    if (!response.data || !response.data.logs) {
+      throw new Error('Invalid response format from server');
+    }
+    
+    console.log(`Received ${response.data.logs.length} malware logs out of ${response.data.pagination?.total}`);
+    
+    // Log first few results to verify pagination works
+    if (params.page && params.page > 1 && response.data.logs?.length > 0) {
+      console.log('Page number requested:', params.page);
+      console.log('First few log IDs on this page:', 
+        response.data.logs.slice(0, 3).map(log => log.id || log._id));
+    }
+    
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching malware logs:', error);
+    
+    // Detailed error handling
+    if (error.response) {
+      console.error('Error details:', error.response.data);
+      throw new Error(error.response.data.message || 'Failed to fetch malware logs');
+    }
+    
+    throw new Error('Network error. Please try again.');
+  }
+};
+
 // Get Sentinel AI logs
 export const getSentinelAILogs = async (params = {}) => {
   try {

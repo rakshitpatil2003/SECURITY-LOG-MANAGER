@@ -41,6 +41,9 @@ import BugReportIcon from '@mui/icons-material/BugReport';
 import InsertPageBreakIcon from '@mui/icons-material/InsertPageBreak';
 import SmartToyIcon from '@mui/icons-material/SmartToy';
 import PsychologyIcon from '@mui/icons-material/Psychology';
+import ScreenSearchDesktopIcon from '@mui/icons-material/ScreenSearchDesktop';
+import VpnKeyIcon from '@mui/icons-material/VpnKey';
+import ViewInArIcon from '@mui/icons-material/ViewInAr';
 // Sidebar width
 const drawerWidth = 240;
 
@@ -96,6 +99,24 @@ const Sidebar = ({ open, toggleDrawer }) => {
     title: 'File Integrity Monitoring',
     icon: <InsertPageBreakIcon />,
     path: '/fim',
+    roles: ['administrator', 'L1-Analyst', 'L2-Analyst', 'L3-Analyst']
+    },
+    {
+    title: 'Session Analysis',
+    icon: <VpnKeyIcon />,
+    path: '/sessions',
+    roles: ['administrator', 'L1-Analyst', 'L2-Analyst', 'L3-Analyst']
+    },
+    {
+    title: 'System Configuration Assessment',
+    icon: <ScreenSearchDesktopIcon />,
+    path: '/sca',
+    roles: ['administrator', 'L1-Analyst', 'L2-Analyst', 'L3-Analyst']
+    },
+    {
+    title: 'Malware Detection',
+    icon: <ViewInArIcon />,
+    path: '/malware',
     roles: ['administrator', 'L1-Analyst', 'L2-Analyst', 'L3-Analyst']
     },
     {

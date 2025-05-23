@@ -37,6 +37,9 @@ import ThreatHunting from './components/ThreatIntelligence/ThreatHunting';
 import FIM from './components/Logs/FIM';
 import SentinelAI from './components/Logs/SentinelAI';
 import AdvancedAnalytics from './components/Logs/AdvancedAnalytics';
+import SCA from './components/Logs/SCA';
+import Session from './components/Logs/Session';
+import Malware from './components/Logs/Malware';
 
 
 // Theme configuration
@@ -118,6 +121,9 @@ function AppWithTheme() {
               <Route path="majorlogs" element={<MajorLogs />} />
               <Route path="advanced-analytics" element={<AdvancedAnalytics />} />
               <Route path="fim" element={<FIM />} />
+              <Route path="sessions" element={<Session />} />
+              <Route path="sca" element={<SCA />} />
+              <Route path="malware" element={<Malware />} />
               <Route path="sentinelai" element={<SentinelAI />} />
               <Route path="remediation" element={<ManualRemediation />} />
               <Route path="tickets" element={<Tickets />} />
